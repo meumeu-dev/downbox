@@ -53,6 +53,14 @@ func (sm *ShareManager) Create(filePath, shareType, baseURL string) (*Share, err
 		return nil, fmt.Errorf("path not allowed")
 	}
 
+	sm.mu.Lock()
+	// Limit shares to prevent memory exhaustion
+	if len(sm.shares) >= 1000 {
+		sm.mu.Unlock()
+		return nil, fmt.Errorf("maximum number of shares reached (1000)")
+	}
+	sm.mu.Unlock()
+
 	token := generateToken()
 	share := &Share{
 		Token:     token,

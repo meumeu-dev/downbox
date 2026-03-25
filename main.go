@@ -255,7 +255,7 @@ func cmdStart(args []string) {
 
 	// Redirect stdout/stderr to log file
 	logPath := "/tmp/downbox.log"
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cannot open log file: %v\n", err)
 		os.Exit(1)
@@ -494,7 +494,7 @@ func runServer(args []string) {
 		b := make([]byte, 12)
 		rand.Read(b)
 		cfg.Password = hex.EncodeToString(b)
-		slog.Warn("no password configured, generated one", "password", cfg.Password)
+		slog.Info("no password configured, one has been generated")
 		// Save it to config so it persists across restarts
 		saveConfig(&cfg)
 	}
@@ -563,9 +563,8 @@ func runServer(args []string) {
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
 		Handler:      mux,
-		ReadTimeout:  0,
-		WriteTimeout: 0,
-		IdleTimeout:  120 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	// Graceful shutdown

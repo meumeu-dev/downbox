@@ -195,7 +195,7 @@ download-dir: ~/Downloads
 aria2-port: 6800
 tunnel: none
 `
-	return os.WriteFile(path, []byte(content), 0o644)
+	return os.WriteFile(path, []byte(content), 0o600)
 }
 
 // expandHome replaces ~ with the user's home directory.

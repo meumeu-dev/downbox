@@ -145,12 +145,14 @@ func authMiddleware(cfg *Config, next http.Handler) http.Handler {
 				tokenHash := sha256.Sum256([]byte(token))
 				sessions.Store(tokenHash, time.Now().Add(30*24*time.Hour))
 
+				isHTTPS := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 				http.SetCookie(w, &http.Cookie{
 					Name:     "downbox_session",
 					Value:    token,
 					Path:     "/",
 					MaxAge:   86400 * 30,
 					HttpOnly: true,
+					Secure:   isHTTPS,
 					SameSite: http.SameSiteLaxMode,
 				})
 				writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -383,8 +385,12 @@ func handleAddDownload(client *aria2.Client) http.HandlerFunc {
 			return
 		}
 
-		// Whitelist safe aria2 options only
+		// Whitelist safe aria2 options only, force no redirect (SSRF prevention)
 		req.Options = filterAria2Options(req.Options)
+		if req.Options == nil {
+			req.Options = make(map[string]string)
+		}
+		req.Options["follow-redirect"] = "false"
 
 		gid, err := client.AddURI([]string{req.URL}, req.Options)
 		if err != nil {
