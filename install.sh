@@ -8,6 +8,7 @@ set -e
 REPO="meumeu-dev/downbox"
 INSTALL_DIR="/usr/local/bin"
 PORT="${PORT:-8080}"
+ARIA2_PORT="${ARIA2_PORT:-6800}"
 
 # Colors
 RED='\033[0;31m'
@@ -107,10 +108,27 @@ if [ ! -f "$HOME/.config/downbox/downbox.conf" ]; then
 setup: false
 port: $PORT
 download-dir: ~/Downloads
-aria2-port: 6800
+aria2-port: $ARIA2_PORT
 tunnel: none
 CONF
-    ok "Config created (~/.config/downbox/downbox.conf) with port $PORT"
+    ok "Config created (~/.config/downbox/downbox.conf) port=$PORT aria2=$ARIA2_PORT"
+fi
+
+# Check if ports are available
+check_port() {
+    if command -v ss >/dev/null 2>&1; then
+        ss -tlnp 2>/dev/null | grep -q ":$1 " && return 1
+    elif command -v netstat >/dev/null 2>&1; then
+        netstat -tlnp 2>/dev/null | grep -q ":$1 " && return 1
+    fi
+    return 0
+}
+
+if ! check_port "$PORT"; then
+    warn "Port $PORT is already in use. Set PORT=XXXX to use a different port"
+fi
+if ! check_port "$ARIA2_PORT"; then
+    warn "aria2 port $ARIA2_PORT is already in use. Set ARIA2_PORT=XXXX to change it"
 fi
 
 # Start
