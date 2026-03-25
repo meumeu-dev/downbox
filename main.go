@@ -50,7 +50,6 @@ type Config struct {
 	ExcludeTrackers     string // comma-separated tracker URIs to block, or "*"
 	Proxy               string // SOCKS/HTTP proxy: "socks5://127.0.0.1:9050"
 	BlocklistURL        string // URL to ipfilter.dat / blocklist (auto-downloaded)
-	BlocklistMode       string // "proxy", "iptables", "none"
 	SetupDone           bool
 	Dev                 bool
 }
@@ -518,6 +517,19 @@ func runServer(args []string) {
 		"download-dir", cfg.DownloadDir,
 	)
 
+	// Blocklist — start before aria2 so the filtering proxy is ready
+	blocklistMgr := NewBlocklistManager(cfg)
+	if err := blocklistMgr.Start(); err != nil {
+		slog.Warn("blocklist failed", "error", err)
+	}
+	defer blocklistMgr.Stop()
+
+	// If blocklist proxy is running, route aria2 through it
+	if proxyAddr := blocklistMgr.ProxyAddr(); proxyAddr != "" {
+		cfg.Proxy = "socks5://127.0.0.1:" + strings.Split(proxyAddr, ":")[1]
+		slog.Info("aria2 routed through blocklist proxy", "proxy", cfg.Proxy)
+	}
+
 	// --- Start aria2 as subprocess ---
 	aria2Cmd, err := startAria2(cfg)
 	if err != nil {
@@ -532,20 +544,6 @@ func runServer(args []string) {
 	// Init components
 	aria2Client := aria2.NewClient(cfg.Aria2URL, cfg.Aria2Secret)
 	fileHandler := files.NewHandler(cfg.DownloadDir)
-
-	// Check aria2 connection
-	if aria2Client.Ping() {
-		slog.Info("aria2 connected", "port", cfg.Aria2Port)
-	} else {
-		slog.Warn("aria2 not responding yet, will retry in background")
-	}
-
-	// Blocklist
-	blocklistMgr := NewBlocklistManager(cfg)
-	if err := blocklistMgr.Start(); err != nil {
-		slog.Warn("blocklist failed", "error", err)
-	}
-	defer blocklistMgr.Stop()
 
 	// Web filesystem
 	var webFileSystem http.FileSystem

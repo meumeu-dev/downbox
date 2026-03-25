@@ -532,7 +532,6 @@ func handleSetupSave(cfg *Config, tunnelMgr *TunnelManager) http.HandlerFunc {
 			ExcludeTrackers     string `json:"excludeTrackers"`
 			Proxy               string `json:"proxy"`
 			BlocklistURL        string `json:"blocklistUrl"`
-			BlocklistMode       string `json:"blocklistMode"`
 		}
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -556,7 +555,6 @@ func handleSetupSave(cfg *Config, tunnelMgr *TunnelManager) http.HandlerFunc {
 		cfg.ExcludeTrackers = req.ExcludeTrackers
 		cfg.Proxy = req.Proxy
 		cfg.BlocklistURL = req.BlocklistURL
-		cfg.BlocklistMode = req.BlocklistMode
 		cfg.SetupDone = true
 
 		// Set public URL based on tunnel
@@ -711,7 +709,6 @@ func handleStatus(cfg *Config, client *aria2.Client, tunnelMgr *TunnelManager) h
 				"excludeTrackers":     cfg.ExcludeTrackers,
 				"proxy":               cfg.Proxy,
 				"blocklistUrl":        cfg.BlocklistURL,
-				"blocklistMode":       cfg.BlocklistMode,
 			},
 		}
 

@@ -541,15 +541,7 @@
                     <h3>IP Blocklist</h3>
                     <label>Blocklist URL
                         <input type="text" x-model="settingsData.blocklistUrl" placeholder="https://example.com/blocklist.dat">
-                        <small>URL to an IP blocklist (ipfilter.dat, P2P format, plain IP/CIDR). Auto-refreshed daily</small>
-                    </label>
-                    <label>Blocklist mode
-                        <select x-model="settingsData.blocklistMode">
-                            <option value="none">Disabled</option>
-                            <option value="iptables">iptables/ipset (needs root, best for bare metal)</option>
-                            <option value="proxy">Proxy-based (needs a filtering proxy)</option>
-                        </select>
-                        <small>iptables blocks IPs at the kernel level. Proxy delegates filtering to your SOCKS proxy</small>
+                        <small>URL to an IP blocklist (ipfilter.dat, P2P format, plain IP/CIDR). Auto-refreshed daily. Requires restart</small>
                     </label>
                 </div>
 
