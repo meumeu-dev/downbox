@@ -70,7 +70,7 @@ function downbox() {
         async checkSetup() {
             try {
                 const r = await fetch('/api/setup/status');
-                if (r.status === 401) { this.needsLogin = true; return; }
+                if (r.status === 401) { this.needsLogin = true; this.needsSetup = false; return; }
                 const d = await r.json();
                 this.needsSetup = d.needsSetup;
                 if (this.needsSetup) {
