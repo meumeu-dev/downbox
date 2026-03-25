@@ -489,6 +489,16 @@ func runServer(args []string) {
 		cfg.Aria2Secret = hex.EncodeToString(b)
 	}
 
+	// Auto-generate password if not set
+	if cfg.Password == "" {
+		b := make([]byte, 12)
+		rand.Read(b)
+		cfg.Password = hex.EncodeToString(b)
+		slog.Warn("no password configured, generated one", "password", cfg.Password)
+		// Save it to config so it persists across restarts
+		saveConfig(&cfg)
+	}
+
 	cfg.Aria2URL = fmt.Sprintf("http://localhost:%d/jsonrpc", cfg.Aria2Port)
 
 	// Write PID and port files
@@ -570,6 +580,7 @@ func runServer(args []string) {
 	}()
 
 	fmt.Printf("\n  DownBox ready → http://localhost:%d\n", cfg.Port)
+	fmt.Printf("  Password:      %s\n", cfg.Password)
 	if cfg.PublicURL != "" {
 		fmt.Printf("  Public URL:    %s\n", cfg.PublicURL)
 	}

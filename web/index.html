@@ -8,6 +8,27 @@
 </head>
 <body x-data="downbox()" x-init="init()">
 
+    <!-- ==================== LOGIN ==================== -->
+    <div x-show="needsLogin" x-cloak class="wizard-overlay">
+        <div class="wizard" style="max-width:360px">
+            <div class="wizard-logo">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <span>DownBox</span>
+            </div>
+            <h2 style="text-align:center;margin-bottom:1rem">Login</h2>
+            <form @submit.prevent="login()">
+                <label>Password
+                    <input type="password" x-model="loginPassword" placeholder="Enter password" autofocus>
+                </label>
+                <div x-show="loginError" class="alert alert-err" x-text="loginError" style="margin-top:0.5rem"></div>
+                <button type="submit" class="btn btn-primary" style="width:100%;margin-top:1rem" :disabled="!loginPassword">Login</button>
+            </form>
+        </div>
+    </div>
+
     <!-- ==================== SETUP WIZARD ==================== -->
     <div x-show="needsSetup" x-cloak class="wizard-overlay">
         <div class="wizard">

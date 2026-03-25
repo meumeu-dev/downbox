@@ -1,5 +1,10 @@
 function downbox() {
     return {
+        // Auth
+        needsLogin: false,
+        loginPassword: '',
+        loginError: '',
+
         // Setup wizard
         needsSetup: true,
         wizardStep: 1,
@@ -36,12 +41,35 @@ function downbox() {
 
         async init() {
             await this.checkSetup();
-            if (!this.needsSetup) this.startApp();
+            if (!this.needsLogin && !this.needsSetup) this.startApp();
+        },
+
+        async login() {
+            this.loginError = '';
+            try {
+                const r = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: this.loginPassword })
+                });
+                const d = await r.json();
+                if (d.ok) {
+                    this.needsLogin = false;
+                    this.loginPassword = '';
+                    await this.checkSetup();
+                    if (!this.needsSetup) this.startApp();
+                } else {
+                    this.loginError = d.error || 'Wrong password';
+                }
+            } catch (e) {
+                this.loginError = e.message;
+            }
         },
 
         async checkSetup() {
             try {
                 const r = await fetch('/api/setup/status');
+                if (r.status === 401) { this.needsLogin = true; return; }
                 const d = await r.json();
                 this.needsSetup = d.needsSetup;
                 if (this.needsSetup) {

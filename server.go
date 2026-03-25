@@ -61,11 +61,7 @@ func NewServer(cfg *Config, aria2Client *aria2.Client, fileHandler *files.Handle
 // --- Middleware ---
 
 func withMiddleware(cfg *Config, next http.Handler) http.Handler {
-	h := recoveryMiddleware(loggingMiddleware(next))
-	if cfg.Password != "" {
-		h = authMiddleware(cfg.Password, h)
-	}
-	return h
+	return recoveryMiddleware(loggingMiddleware(authMiddleware(cfg.Password, next)))
 }
 
 func authMiddleware(password string, next http.Handler) http.Handler {
