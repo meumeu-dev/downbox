@@ -3,9 +3,11 @@ set -e
 
 # DownBox installer
 # Usage: curl -sL meumeu.dev/downbox/install | bash
+#        curl -sL meumeu.dev/downbox/install | PORT=9090 bash
 
 REPO="meumeu-dev/downbox"
 INSTALL_DIR="/usr/local/bin"
+PORT="${PORT:-8080}"
 
 # Colors
 RED='\033[0;31m'
@@ -26,10 +28,11 @@ OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 # Detect arch
 ARCH=$(uname -m)
 case "$ARCH" in
-    x86_64)  ARCH="amd64" ;;
-    aarch64) ARCH="arm64" ;;
-    armv7*)  ARCH="armv7" ;;
-    *)       err "Unsupported architecture: $ARCH" ;;
+    x86_64)       ARCH="amd64" ;;
+    i386|i686)    ARCH="i386" ;;
+    aarch64)      ARCH="arm64" ;;
+    armv7*)       ARCH="armv7" ;;
+    *)            err "Unsupported architecture: $ARCH" ;;
 esac
 
 info "Detected: linux/$ARCH"
@@ -96,14 +99,28 @@ if ! command -v bore >/dev/null 2>&1; then
     fi
 fi
 
+# Generate config with chosen port
+if [ ! -f "$HOME/.config/downbox/downbox.conf" ]; then
+    mkdir -p "$HOME/.config/downbox"
+    cat > "$HOME/.config/downbox/downbox.conf" <<CONF
+# DownBox configuration
+setup: false
+port: $PORT
+download-dir: ~/Downloads
+aria2-port: 6800
+tunnel: none
+CONF
+    ok "Config created (~/.config/downbox/downbox.conf) with port $PORT"
+fi
+
 # Start
 info "Starting DownBox..."
-downbox start 2>/dev/null || downbox 2>/dev/null &
+downbox start -port "$PORT" 2>/dev/null || downbox -port "$PORT" 2>/dev/null &
 
 echo ""
 printf "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 printf "${GREEN}  DownBox installed!${NC}\n"
-printf "${GREEN}  Open ${CYAN}http://localhost:8080${GREEN} to configure${NC}\n"
+printf "${GREEN}  Open ${CYAN}http://localhost:${PORT}${GREEN} to configure${NC}\n"
 printf "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 echo ""
 echo "  downbox start    Start"
