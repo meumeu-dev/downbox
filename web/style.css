@@ -110,6 +110,22 @@ a:hover { color: var(--primary-hover); }
     font-size: 0.75rem;
     color: var(--text-muted);
 }
+.sidebar-credit {
+    padding: 0.6rem 1.2rem;
+    margin-top: 0.5rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    font-size: 0.65rem;
+}
+.sidebar-credit a {
+    color: var(--text-muted);
+    font-weight: 600;
+}
+.sidebar-credit a:hover { color: var(--primary); }
+.sidebar-credit span { color: #333; }
+
 .status-dot {
     width: 7px;
     height: 7px;
@@ -659,6 +675,15 @@ a:hover { color: var(--primary-hover); }
     animation: spin 0.6s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.wizard-footer {
+    text-align: center;
+    margin-top: 2rem;
+    font-size: 0.7rem;
+    color: #333;
+}
+.wizard-footer a { color: #444; }
+.wizard-footer a:hover { color: var(--primary); }
 
 /* ===== RESPONSIVE ===== */
 
