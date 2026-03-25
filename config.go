@@ -82,6 +82,12 @@ func loadConfig(cfg *Config, flagsSet map[string]bool) string {
 		if v, ok := values["cloudflared-hostname"]; ok {
 			cfg.CloudflaredHostname = v
 		}
+		if v, ok := values["bore-server"]; ok {
+			cfg.BoreServer = v
+		}
+		if v, ok := values["bore-secret"]; ok {
+			cfg.BoreSecret = v
+		}
 		if v, ok := values["setup"]; ok && v == "true" {
 			cfg.SetupDone = true
 		}
@@ -122,6 +128,12 @@ func saveConfig(cfg *Config) error {
 	}
 	if cfg.CloudflaredHostname != "" {
 		b.WriteString(fmt.Sprintf("cloudflared-hostname: %s\n", cfg.CloudflaredHostname))
+	}
+	if cfg.BoreServer != "" {
+		b.WriteString(fmt.Sprintf("bore-server: %s\n", cfg.BoreServer))
+	}
+	if cfg.BoreSecret != "" {
+		b.WriteString(fmt.Sprintf("bore-secret: %s\n", cfg.BoreSecret))
 	}
 	if cfg.PublicURL != "" {
 		b.WriteString(fmt.Sprintf("public-url: %s\n", cfg.PublicURL))

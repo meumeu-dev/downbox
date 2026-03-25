@@ -244,6 +244,8 @@ func handleSetupSave(cfg *Config, tunnelMgr *TunnelManager) http.HandlerFunc {
 			Tunnel              string `json:"tunnel"`
 			CloudflaredToken    string `json:"cloudflaredToken"`
 			CloudflaredHostname string `json:"cloudflaredHostname"`
+			BoreServer          string `json:"boreServer"`
+			BoreSecret          string `json:"boreSecret"`
 		}
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -260,6 +262,8 @@ func handleSetupSave(cfg *Config, tunnelMgr *TunnelManager) http.HandlerFunc {
 		cfg.Tunnel = req.Tunnel
 		cfg.CloudflaredToken = req.CloudflaredToken
 		cfg.CloudflaredHostname = req.CloudflaredHostname
+		cfg.BoreServer = req.BoreServer
+		cfg.BoreSecret = req.BoreSecret
 		cfg.SetupDone = true
 
 		// Set public URL based on tunnel
@@ -382,6 +386,8 @@ func handleStatus(cfg *Config, client *aria2.Client, tunnelMgr *TunnelManager) h
 				"tunnel":              cfg.Tunnel,
 				"cloudflaredToken":    cfg.CloudflaredToken,
 				"cloudflaredHostname": cfg.CloudflaredHostname,
+			"boreServer":          cfg.BoreServer,
+			"boreSecret":          cfg.BoreSecret,
 			},
 		}
 

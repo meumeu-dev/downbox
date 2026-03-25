@@ -3,13 +3,13 @@ function downbox() {
         // Setup wizard
         needsSetup: true,
         wizardStep: 1,
-        wizardData: { tunnel: 'none', cloudflaredToken: '', cloudflaredHostname: '', port: 8080, downloadDir: '~/Downloads' },
+        wizardData: { tunnel: 'none', cloudflaredToken: '', cloudflaredHostname: '', boreServer: '', boreSecret: '', port: 8080, downloadDir: '~/Downloads' },
         wizardTools: {},
         wizardSaving: false,
         wizardError: '',
 
         // Settings
-        settingsData: { tunnel: 'none', cloudflaredToken: '', cloudflaredHostname: '', port: 8080, downloadDir: '~/Downloads' },
+        settingsData: { tunnel: 'none', cloudflaredToken: '', cloudflaredHostname: '', boreServer: '', boreSecret: '', port: 8080, downloadDir: '~/Downloads' },
         settingsSaving: false,
         settingsSaved: false,
 
@@ -269,6 +269,8 @@ function downbox() {
                     tunnel: s.config?.tunnel || 'none',
                     cloudflaredToken: s.config?.cloudflaredToken || '',
                     cloudflaredHostname: s.config?.cloudflaredHostname || '',
+                    boreServer: s.config?.boreServer || '',
+                    boreSecret: s.config?.boreSecret || '',
                 };
             } catch {}
         },

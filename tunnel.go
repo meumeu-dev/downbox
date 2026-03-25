@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-var boreURLRegex = regexp.MustCompile(`bore\.pub:(\d+)`)
+var boreURLRegex = regexp.MustCompile(`listening at ([^\s]+:\d+)`)
 
 type TunnelManager struct {
 	cfg    Config
@@ -182,7 +182,17 @@ func (tm *TunnelManager) startBore() error {
 	}
 	slog.Info("starting bore", "port", port)
 
-	cmd := exec.CommandContext(ctx, "bore", "local", fmt.Sprintf("%d", port), "--to", "bore.pub")
+	boreServer := tm.cfg.BoreServer
+	if boreServer == "" {
+		boreServer = "bore.pub"
+	}
+
+	args := []string{"local", fmt.Sprintf("%d", port), "--to", boreServer}
+	if tm.cfg.BoreSecret != "" {
+		args = append(args, "--secret", tm.cfg.BoreSecret)
+	}
+
+	cmd := exec.CommandContext(ctx, "bore", args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGTERM}
 
 	stderr, err := cmd.StderrPipe()
@@ -203,8 +213,8 @@ func (tm *TunnelManager) startBore() error {
 
 	parseLine := func(line string) {
 		slog.Debug("bore", "line", line)
-		if match := boreURLRegex.FindStringSubmatch(line); len(match) > 0 {
-			url := fmt.Sprintf("http://bore.pub:%s", match[1])
+		if match := boreURLRegex.FindStringSubmatch(line); len(match) > 1 {
+			url := fmt.Sprintf("http://%s", match[1])
 			tm.setRunning(url)
 			slog.Info("bore tunnel running", "url", url)
 		}

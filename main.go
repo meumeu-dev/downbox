@@ -42,6 +42,8 @@ type Config struct {
 	Tunnel              string // cloudflared, bore, none
 	CloudflaredToken    string
 	CloudflaredHostname string
+	BoreServer          string
+	BoreSecret          string
 	SetupDone           bool
 	Dev                 bool
 }

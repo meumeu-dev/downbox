@@ -49,7 +49,7 @@
                             <span class="tc-tag" x-show="wizardTools.bore">installed</span>
                             <span class="tc-tag tc-missing" x-show="!wizardTools.bore">not installed</span>
                         </div>
-                        <p>Random public URL, no signup needed. Free &amp; simple.</p>
+                        <p>Random public URL via bore tunnel. Free &amp; simple.</p>
                     </div>
 
                     <div class="tunnel-card" :class="wizardData.tunnel === 'none' && 'selected'" @click="wizardData.tunnel = 'none'">
@@ -67,6 +67,18 @@
                     <label>Hostname
                         <input type="text" x-model="wizardData.cloudflaredHostname" placeholder="dl.example.com">
                         <small>The subdomain you configured in your tunnel's public hostname</small>
+                    </label>
+                </div>
+
+                <!-- Bore config -->
+                <div x-show="wizardData.tunnel === 'bore'" class="tunnel-config" x-transition>
+                    <label>Server
+                        <input type="text" x-model="wizardData.boreServer" placeholder="bore.pub">
+                        <small>Bore server address. Leave empty for bore.pub (requires secret)</small>
+                    </label>
+                    <label>Secret
+                        <input type="text" x-model="wizardData.boreSecret" placeholder="secret">
+                        <small>Required for bore.pub. Optional for self-hosted servers</small>
                     </label>
                 </div>
             </div>
@@ -460,8 +472,15 @@
                             <input type="text" x-model="settingsData.cloudflaredHostname" placeholder="dl.example.com">
                         </label>
                     </div>
-                    <div x-show="settingsData.tunnel === 'bore'" class="settings-note">
-                        Bore generates a random public URL automatically. No configuration needed.
+                    <div x-show="settingsData.tunnel === 'bore'" x-transition>
+                        <label>Server
+                            <input type="text" x-model="settingsData.boreServer" placeholder="bore.pub">
+                            <small>Leave empty for bore.pub</small>
+                        </label>
+                        <label>Secret
+                            <input type="text" x-model="settingsData.boreSecret" placeholder="secret">
+                            <small>Required for bore.pub</small>
+                        </label>
                     </div>
 
                     <!-- Tunnel status -->
