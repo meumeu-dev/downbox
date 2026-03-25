@@ -91,6 +91,15 @@ func loadConfig(cfg *Config, flagsSet map[string]bool) string {
 		if v, ok := values["password"]; ok {
 			cfg.Password = v
 		}
+		if v, ok := values["dns-servers"]; ok {
+			cfg.DNSServers = v
+		}
+		if v, ok := values["interface"]; ok {
+			cfg.Interface = v
+		}
+		if v, ok := values["exclude-trackers"]; ok {
+			cfg.ExcludeTrackers = v
+		}
 		if v, ok := values["setup"]; ok && v == "true" {
 			cfg.SetupDone = true
 		}
@@ -140,6 +149,15 @@ func saveConfig(cfg *Config) error {
 	}
 	if cfg.Password != "" {
 		b.WriteString(fmt.Sprintf("password: %s\n", cfg.Password))
+	}
+	if cfg.DNSServers != "" {
+		b.WriteString(fmt.Sprintf("dns-servers: %s\n", cfg.DNSServers))
+	}
+	if cfg.Interface != "" {
+		b.WriteString(fmt.Sprintf("interface: %s\n", cfg.Interface))
+	}
+	if cfg.ExcludeTrackers != "" {
+		b.WriteString(fmt.Sprintf("exclude-trackers: %s\n", cfg.ExcludeTrackers))
 	}
 	if cfg.PublicURL != "" {
 		b.WriteString(fmt.Sprintf("public-url: %s\n", cfg.PublicURL))

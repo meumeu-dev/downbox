@@ -45,6 +45,9 @@ type Config struct {
 	BoreServer          string
 	BoreSecret          string
 	Password            string
+	DNSServers          string // comma-separated: "1.1.1.1,8.8.8.8"
+	Interface           string // network interface for downloads: "tun0", "eth0"
+	ExcludeTrackers     string // comma-separated tracker URIs to block, or "*"
 	SetupDone           bool
 	Dev                 bool
 }
@@ -606,7 +609,7 @@ func startAria2(cfg Config) (*exec.Cmd, error) {
 		return nil, fmt.Errorf("aria2c not found in PATH — install it: sudo apt install aria2")
 	}
 
-	cmd := exec.Command(aria2Path,
+	args := []string{
 		"--enable-rpc",
 		fmt.Sprintf("--rpc-listen-port=%d", cfg.Aria2Port),
 		"--rpc-listen-all=false",
@@ -627,7 +630,27 @@ func startAria2(cfg Config) (*exec.Cmd, error) {
 		"--follow-torrent=true",
 		"--check-certificate=true",
 		"--console-log-level=warn",
-	)
+	}
+
+	// Custom DNS servers
+	if cfg.DNSServers != "" {
+		args = append(args, fmt.Sprintf("--async-dns-server=%s", cfg.DNSServers))
+		slog.Info("aria2 using custom DNS", "servers", cfg.DNSServers)
+	}
+
+	// Bind to specific network interface (VPN, etc.)
+	if cfg.Interface != "" {
+		args = append(args, fmt.Sprintf("--interface=%s", cfg.Interface))
+		slog.Info("aria2 bound to interface", "interface", cfg.Interface)
+	}
+
+	// Exclude BitTorrent trackers
+	if cfg.ExcludeTrackers != "" {
+		args = append(args, fmt.Sprintf("--bt-exclude-tracker=%s", cfg.ExcludeTrackers))
+		slog.Info("aria2 excluding trackers", "trackers", cfg.ExcludeTrackers)
+	}
+
+	cmd := exec.Command(aria2Path, args...)
 
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid:   true,

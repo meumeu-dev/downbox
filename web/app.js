@@ -14,7 +14,7 @@ function downbox() {
         wizardError: '',
 
         // Settings
-        settingsData: { tunnel: 'none', cloudflaredToken: '', cloudflaredHostname: '', boreServer: '', boreSecret: '', port: 8080, downloadDir: '~/Downloads' },
+        settingsData: { tunnel: 'none', cloudflaredToken: '', cloudflaredHostname: '', boreServer: '', boreSecret: '', port: 8080, downloadDir: '~/Downloads', dnsServers: '', interface: '', excludeTrackers: '' },
         settingsSaving: false,
         settingsSaved: false,
 
@@ -299,6 +299,9 @@ function downbox() {
                     cloudflaredHostname: s.config?.cloudflaredHostname || '',
                     boreServer: s.config?.boreServer || '',
                     boreSecret: s.config?.boreSecret || '',
+                    dnsServers: s.config?.dnsServers || '',
+                    interface: s.config?.interface || '',
+                    excludeTrackers: s.config?.excludeTrackers || '',
                 };
             } catch {}
         },

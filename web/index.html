@@ -512,6 +512,22 @@
                     </div>
                 </div>
 
+                <div class="card settings-card">
+                    <h3>Downloads</h3>
+                    <label>DNS servers
+                        <input type="text" x-model="settingsData.dnsServers" placeholder="1.1.1.1,8.8.8.8">
+                        <small>Custom DNS for downloads. Comma-separated. Empty = system DNS</small>
+                    </label>
+                    <label>Network interface
+                        <input type="text" x-model="settingsData.interface" placeholder="tun0, eth0, wg0...">
+                        <small>Bind downloads to a specific interface (VPN, etc.). Empty = default</small>
+                    </label>
+                    <label>Exclude trackers
+                        <input type="text" x-model="settingsData.excludeTrackers" placeholder="* or tracker URLs">
+                        <small>Comma-separated tracker URIs to block. Use * to block all trackers</small>
+                    </label>
+                </div>
+
                 <div class="settings-actions">
                     <button class="btn btn-primary" @click="saveSettings()" :disabled="settingsSaving">
                         <span x-text="settingsSaving ? 'Saving...' : 'Save'"></span>

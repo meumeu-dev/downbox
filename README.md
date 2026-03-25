@@ -66,6 +66,18 @@ cloudflared-token: eyJ...
 cloudflared-hostname: dl.example.com
 ```
 
+Download options:
+
+```
+dns-servers: 1.1.1.1,8.8.8.8
+interface: tun0
+exclude-trackers: *
+```
+
+- **dns-servers** — Custom DNS for downloads (comma-separated)
+- **interface** — Bind downloads to a network interface (VPN: `tun0`, `wg0`)
+- **exclude-trackers** — Block BitTorrent trackers (`*` = all, or specific URIs)
+
 CLI flags override config file values.
 
 ## Build from source
