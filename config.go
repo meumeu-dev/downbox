@@ -106,6 +106,11 @@ func loadConfig(cfg *Config, flagsSet map[string]bool) string {
 		if v, ok := values["blocklist-url"]; ok {
 			cfg.BlocklistURL = v
 		}
+		if v, ok := values["blocklist-port"]; ok {
+			if n, err := strconv.Atoi(v); err == nil {
+				cfg.BlocklistPort = n
+			}
+		}
 		if v, ok := values["setup"]; ok && v == "true" {
 			cfg.SetupDone = true
 		}
@@ -170,6 +175,9 @@ func saveConfig(cfg *Config) error {
 	}
 	if cfg.BlocklistURL != "" {
 		b.WriteString(fmt.Sprintf("blocklist-url: %s\n", cfg.BlocklistURL))
+	}
+	if cfg.BlocklistPort > 0 {
+		b.WriteString(fmt.Sprintf("blocklist-port: %d\n", cfg.BlocklistPort))
 	}
 	if cfg.PublicURL != "" {
 		b.WriteString(fmt.Sprintf("public-url: %s\n", cfg.PublicURL))

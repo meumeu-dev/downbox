@@ -262,7 +262,11 @@ func ipRangeToNets(startStr, endStr string) []*net.IPNet {
 // --- Built-in SOCKS5 filtering proxy ---
 
 func (bm *BlocklistManager) startProxy() error {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	addr := "127.0.0.1:0"
+	if bm.cfg.BlocklistPort > 0 {
+		addr = fmt.Sprintf("127.0.0.1:%d", bm.cfg.BlocklistPort)
+	}
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
