@@ -33,20 +33,36 @@ func NewBlocklistManager(cfg Config) *BlocklistManager {
 	}
 }
 
-// Start downloads the blocklist and starts the filtering SOCKS5 proxy
+// Start downloads all blocklists and starts the filtering SOCKS5 proxy
 func (bm *BlocklistManager) Start() error {
 	if bm.cfg.BlocklistURL == "" {
 		return nil
 	}
 
-	if err := bm.downloadIfNeeded(); err != nil {
-		return fmt.Errorf("download blocklist: %w", err)
+	urls := strings.Split(bm.cfg.BlocklistURL, ",")
+	for i, u := range urls {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			continue
+		}
+		cacheFile := bm.cacheFile
+		if i > 0 {
+			cacheFile = fmt.Sprintf("%s.%d", bm.cacheFile, i)
+		}
+		if err := downloadIfNeeded(u, cacheFile); err != nil {
+			slog.Warn("blocklist download failed", "url", u, "error", err)
+			continue
+		}
+		if err := bm.loadFromFile(cacheFile); err != nil {
+			slog.Warn("blocklist parse failed", "file", cacheFile, "error", err)
+		}
 	}
 
-	if err := bm.loadBlocklist(); err != nil {
-		return fmt.Errorf("load blocklist: %w", err)
+	if len(bm.networks) == 0 {
+		return fmt.Errorf("no blocklist entries loaded")
 	}
 
+	slog.Info("blocklist total entries", "count", len(bm.networks))
 	return bm.startProxy()
 }
 
@@ -90,17 +106,17 @@ func (bm *BlocklistManager) isBlocked(ip net.IP) bool {
 
 // --- Blocklist download & parsing ---
 
-func (bm *BlocklistManager) downloadIfNeeded() error {
-	if info, err := os.Stat(bm.cacheFile); err == nil {
+func downloadIfNeeded(url, cacheFile string) error {
+	if info, err := os.Stat(cacheFile); err == nil {
 		if time.Since(info.ModTime()) < 24*time.Hour {
-			slog.Info("blocklist cache is fresh", "file", bm.cacheFile)
+			slog.Info("blocklist cache is fresh", "file", cacheFile)
 			return nil
 		}
 	}
 
-	slog.Info("downloading blocklist", "url", bm.cfg.BlocklistURL)
+	slog.Info("downloading blocklist", "url", url)
 	client := &http.Client{Timeout: 60 * time.Second}
-	resp, err := client.Get(bm.cfg.BlocklistURL)
+	resp, err := client.Get(url)
 	if err != nil {
 		return err
 	}
@@ -110,10 +126,10 @@ func (bm *BlocklistManager) downloadIfNeeded() error {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	dir := filepath.Dir(bm.cacheFile)
+	dir := filepath.Dir(cacheFile)
 	os.MkdirAll(dir, 0o700)
 
-	f, err := os.OpenFile(bm.cacheFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	f, err := os.OpenFile(cacheFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
@@ -123,12 +139,12 @@ func (bm *BlocklistManager) downloadIfNeeded() error {
 		return err
 	}
 
-	slog.Info("blocklist downloaded", "file", bm.cacheFile)
+	slog.Info("blocklist downloaded", "file", cacheFile)
 	return nil
 }
 
-func (bm *BlocklistManager) loadBlocklist() error {
-	f, err := os.Open(bm.cacheFile)
+func (bm *BlocklistManager) loadFromFile(cacheFile string) error {
+	f, err := os.Open(cacheFile)
 	if err != nil {
 		return err
 	}
@@ -141,16 +157,15 @@ func (bm *BlocklistManager) loadBlocklist() error {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-
 		nets := parseLine(line)
 		networks = append(networks, nets...)
 	}
 
 	bm.mu.Lock()
-	bm.networks = networks
+	bm.networks = append(bm.networks, networks...)
 	bm.mu.Unlock()
 
-	slog.Info("blocklist loaded", "entries", len(networks))
+	slog.Info("blocklist loaded", "file", cacheFile, "entries", len(networks))
 	return nil
 }
 

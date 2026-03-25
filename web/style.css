@@ -159,6 +159,14 @@ a:hover { color: var(--primary-hover); }
 .upload-btn { cursor: pointer; }
 .upload-btn.uploading { opacity: 0.7; pointer-events: none; }
 
+.blocklist-presets { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.8rem; }
+.bl-toggle { display: flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; cursor: pointer; }
+.bl-toggle input { accent-color: var(--primary); }
+.bl-toggle strong { color: var(--text); }
+.bl-toggle span { color: var(--text-muted); }
+.bl-custom { display: flex; gap: 0.4rem; align-items: center; }
+.bl-custom input { flex: 1; }
+
 /* ===== CARDS ===== */
 
 .card {

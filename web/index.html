@@ -537,21 +537,28 @@
                     </label>
                 </div>
 
-                <div class="card settings-card">
+                <div class="card settings-card" x-data="{customUrl: ''}">
                     <h3>IP Blocklist</h3>
-                    <label>Blocklist
-                        <select @change="if($event.target.value !== 'custom') settingsData.blocklistUrl = $event.target.value">
-                            <option value="">Disabled</option>
-                            <option value="https://raw.githubusercontent.com/sahsu/ipfilter/master/ipfilter.dat" :selected="settingsData.blocklistUrl.includes('sahsu/ipfilter')">Level 1 — Anti-P2P orgs, trackers (recommended)</option>
-                            <option value="https://raw.githubusercontent.com/waelisa/Best-Blocklist/main/wael.list" :selected="settingsData.blocklistUrl.includes('Best-Blocklist')">Wael — Ads, malware, trackers</option>
-                            <option value="https://raw.githubusercontent.com/stamparm/ipsum/master/levels/3.txt" :selected="settingsData.blocklistUrl.includes('stamparm/ipsum')">IPsum Level 3 — Malicious IPs (threat intel)</option>
-                            <option value="custom" :selected="settingsData.blocklistUrl && !settingsData.blocklistUrl.includes('sahsu') && !settingsData.blocklistUrl.includes('Best-Blocklist') && !settingsData.blocklistUrl.includes('stamparm')">Custom URL...</option>
-                        </select>
-                    </label>
-                    <div x-show="settingsData.blocklistUrl && !settingsData.blocklistUrl.includes('sahsu') && !settingsData.blocklistUrl.includes('Best-Blocklist') && !settingsData.blocklistUrl.includes('stamparm')" x-transition>
-                        <label>Custom URL
-                            <input type="text" x-model="settingsData.blocklistUrl" placeholder="https://example.com/blocklist.dat">
+                    <div class="blocklist-presets">
+                        <label class="bl-toggle">
+                            <input type="checkbox" :checked="settingsData.blocklistUrl.includes('sahsu/ipfilter')"
+                                @change="settingsData.blocklistUrl = toggleList(settingsData.blocklistUrl, 'https://raw.githubusercontent.com/sahsu/ipfilter/master/ipfilter.dat', $event.target.checked)">
+                            <span><strong>Level 1</strong> — Anti-P2P orgs, trackers</span>
                         </label>
+                        <label class="bl-toggle">
+                            <input type="checkbox" :checked="settingsData.blocklistUrl.includes('Best-Blocklist')"
+                                @change="settingsData.blocklistUrl = toggleList(settingsData.blocklistUrl, 'https://raw.githubusercontent.com/waelisa/Best-Blocklist/main/wael.list', $event.target.checked)">
+                            <span><strong>Wael</strong> — Ads, malware, trackers</span>
+                        </label>
+                        <label class="bl-toggle">
+                            <input type="checkbox" :checked="settingsData.blocklistUrl.includes('stamparm/ipsum')"
+                                @change="settingsData.blocklistUrl = toggleList(settingsData.blocklistUrl, 'https://raw.githubusercontent.com/stamparm/ipsum/master/levels/3.txt', $event.target.checked)">
+                            <span><strong>IPsum</strong> — Malicious IPs (threat intel)</span>
+                        </label>
+                    </div>
+                    <div class="bl-custom">
+                        <input type="text" x-model="customUrl" placeholder="Add custom blocklist URL..." @keydown.enter="if(customUrl.trim()){settingsData.blocklistUrl = settingsData.blocklistUrl ? settingsData.blocklistUrl+','+customUrl.trim() : customUrl.trim(); customUrl=''}">
+                        <button class="btn btn-xs btn-ghost" @click="if(customUrl.trim()){settingsData.blocklistUrl = settingsData.blocklistUrl ? settingsData.blocklistUrl+','+customUrl.trim() : customUrl.trim(); customUrl=''}" :disabled="!customUrl.trim()">Add</button>
                     </div>
                     <small x-show="settingsData.blocklistUrl">Auto-downloaded and refreshed daily. Built-in filtering proxy, no root needed. Requires restart</small>
                 </div>

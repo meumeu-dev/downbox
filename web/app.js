@@ -383,6 +383,16 @@ function downbox() {
             return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
         },
 
+        toggleList(current, url, add) {
+            let urls = current ? current.split(',').map(u => u.trim()).filter(u => u) : [];
+            if (add) {
+                if (!urls.includes(url)) urls.push(url);
+            } else {
+                urls = urls.filter(u => u !== url);
+            }
+            return urls.join(',');
+        },
+
         typeIcon(type) {
             return { video: '\u{1F3AC}', image: '\u{1F5BC}', audio: '\u{1F3B5}', archive: '\u{1F4E6}', torrent: '\u{1F9F2}', subtitle: '\u{1F4DD}', text: '\u{1F4C4}' }[type] || '\u{1F4CE}';
         }
