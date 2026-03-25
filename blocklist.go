@@ -168,6 +168,11 @@ func (bm *BlocklistManager) loadFromFile(cacheFile string) error {
 
 	bm.mu.Lock()
 	bm.networks = append(bm.networks, networks...)
+	// Cap at 500k entries to prevent CPU exhaustion on linear scan
+	if len(bm.networks) > 500000 {
+		bm.networks = bm.networks[:500000]
+		slog.Warn("blocklist capped at 500k entries")
+	}
 	bm.mu.Unlock()
 
 	slog.Info("blocklist loaded", "file", cacheFile, "entries", len(networks))
@@ -352,6 +357,10 @@ func (bm *BlocklistManager) handleSOCKS5(conn net.Conn) {
 			return
 		}
 		domLen := int(buf[0])
+		if domLen == 0 {
+			conn.Write([]byte{0x05, 0x04, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
+			return
+		}
 		if _, err := io.ReadFull(conn, buf[:domLen]); err != nil {
 			return
 		}
@@ -442,7 +451,11 @@ func dialViaProxy(proxyURL, target string) (net.Conn, error) {
 		return nil, err
 	}
 
-	// Connect request
+	// Connect request — SOCKS5 domain length is 1 byte (max 255)
+	if len(host) > 255 {
+		conn.Close()
+		return nil, fmt.Errorf("hostname too long for SOCKS5: %d", len(host))
+	}
 	req := []byte{0x05, 0x01, 0x00, 0x03, byte(len(host))}
 	req = append(req, []byte(host)...)
 	req = append(req, byte(port>>8), byte(port&0xff))

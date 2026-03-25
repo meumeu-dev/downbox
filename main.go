@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	"unsafe"
@@ -51,6 +52,7 @@ func portFilePath() string {
 }
 
 type Config struct {
+	mu                  sync.RWMutex `json:"-"`
 	Port                int
 	DownloadDir         string
 	Aria2URL            string

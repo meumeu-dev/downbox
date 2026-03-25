@@ -328,7 +328,7 @@ func filterAria2Options(opts map[string]string) map[string]string {
 	}
 	allowed := map[string]bool{
 		"split": true, "max-connection-per-server": true,
-		"min-split-size": true, "header": true, "referer": true,
+		"min-split-size": true, "referer": true,
 		"user-agent": true, "check-integrity": true,
 	}
 	safe := make(map[string]string)
@@ -527,14 +527,14 @@ func handleAddDownload(client *aria2.Client) http.HandlerFunc {
 		}
 		req.URL = pinned.URL
 
-		// Whitelist safe aria2 options only
+		// Whitelist safe aria2 options only (header is NOT whitelisted to prevent injection)
 		req.Options = filterAria2Options(req.Options)
+		if req.Options == nil {
+			req.Options = make(map[string]string)
+		}
 
-		// If hostname was pinned to IP, add Host header so CDNs still work
+		// Only inject Host header when hostname was pinned to IP (CDN compat)
 		if pinned.OriginalHost != "" {
-			if req.Options == nil {
-				req.Options = make(map[string]string)
-			}
 			req.Options["header"] = "Host: " + pinned.OriginalHost
 		}
 
@@ -622,7 +622,8 @@ func handleSetupSave(cfg *Config, tunnelMgr *TunnelManager) http.HandlerFunc {
 			return
 		}
 
-		// Update config
+		// Update config under lock
+		cfg.mu.Lock()
 		if req.Port > 0 {
 			cfg.Port = req.Port
 		}
@@ -640,6 +641,7 @@ func handleSetupSave(cfg *Config, tunnelMgr *TunnelManager) http.HandlerFunc {
 		cfg.Proxy = req.Proxy
 		cfg.BlocklistURL = req.BlocklistURL
 		cfg.SetupDone = true
+		cfg.mu.Unlock()
 
 		// Clear all sessions — config (possibly password) changed
 		if clearSessionsFunc != nil {
@@ -777,8 +779,20 @@ func handleListInterfaces() http.HandlerFunc {
 
 func handleStatus(cfg *Config, client *aria2.Client, tunnelMgr *TunnelManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Convert downloadDir back to ~ form for display
+		cfg.mu.RLock()
 		dlDir := cfg.DownloadDir
+		publicURL := cfg.PublicURL
+		port := cfg.Port
+		tunnel := cfg.Tunnel
+		cfHostname := cfg.CloudflaredHostname
+		boreServer := cfg.BoreServer
+		dnsServers := cfg.DNSServers
+		iface := cfg.Interface
+		excludeTrackers := cfg.ExcludeTrackers
+		blocklistURL := cfg.BlocklistURL
+		cfg.mu.RUnlock()
+
+		// Convert downloadDir back to ~ form for display
 		if home, err := os.UserHomeDir(); err == nil {
 			if strings.HasPrefix(dlDir, home) {
 				dlDir = "~" + dlDir[len(home):]
@@ -786,24 +800,23 @@ func handleStatus(cfg *Config, client *aria2.Client, tunnelMgr *TunnelManager) h
 		}
 
 		status := map[string]interface{}{
-			"publicURL": cfg.PublicURL,
+			"publicURL": publicURL,
 			"config": map[string]interface{}{
-				"port":                cfg.Port,
+				"port":                port,
 				"downloadDir":         dlDir,
-				"tunnel":              cfg.Tunnel,
-				"cloudflaredHostname": cfg.CloudflaredHostname,
-				"boreServer":          cfg.BoreServer,
-				"dnsServers":          cfg.DNSServers,
-				"interface":           cfg.Interface,
-				"excludeTrackers":     cfg.ExcludeTrackers,
-				"proxy":               cfg.Proxy,
-				"blocklistUrl":        cfg.BlocklistURL,
+				"tunnel":              tunnel,
+				"cloudflaredHostname": cfHostname,
+				"boreServer":          boreServer,
+				"dnsServers":          dnsServers,
+				"interface":           iface,
+				"excludeTrackers":     excludeTrackers,
+				"blocklistUrl":        blocklistURL,
 			},
 		}
 
-		// Disk info
+		// Disk info (proxy field removed — may contain credentials)
 		var stat syscall.Statfs_t
-		if err := syscall.Statfs(cfg.DownloadDir, &stat); err == nil {
+		if err := syscall.Statfs(dlDir, &stat); err == nil {
 			status["disk"] = map[string]interface{}{
 				"total": stat.Blocks * uint64(stat.Bsize),
 				"free":  stat.Bavail * uint64(stat.Bsize),
