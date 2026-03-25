@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -70,6 +71,9 @@ func main() {
 		case "init":
 			cmdInit()
 			return
+		case "update":
+			cmdUpdate()
+			return
 		case "version":
 			fmt.Println("downbox", version)
 			return
@@ -81,6 +85,100 @@ func main() {
 
 	// No subcommand = foreground start
 	runServer(os.Args[1:])
+}
+
+func cmdUpdate() {
+	fmt.Println("Checking for updates...")
+
+	// Detect arch
+	arch := ""
+	switch runtime.GOARCH {
+	case "amd64":
+		arch = "amd64"
+	case "arm64":
+		arch = "arm64"
+	case "arm":
+		arch = "armv7"
+	default:
+		fmt.Fprintf(os.Stderr, "Unsupported architecture: %s\n", runtime.GOARCH)
+		os.Exit(1)
+	}
+
+	// Get latest version from GitHub
+	url := fmt.Sprintf("https://github.com/meumeu-dev/downbox/releases/latest/download/downbox-%s", arch)
+
+	// Download to temp
+	tmpFile := "/tmp/downbox-update"
+	cmd := exec.Command("curl", "-fSL", "--progress-bar", url, "-o", tmpFile)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Download failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Make executable
+	os.Chmod(tmpFile, 0o755)
+
+	// Check new version
+	out, err := exec.Command(tmpFile, "version").Output()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid binary: %v\n", err)
+		os.Remove(tmpFile)
+		os.Exit(1)
+	}
+	newVersion := strings.TrimSpace(string(out))
+	fmt.Printf("Current: downbox %s\n", version)
+	fmt.Printf("Latest:  %s\n", newVersion)
+
+	if strings.Contains(newVersion, version) && version != "dev" {
+		fmt.Println("Already up to date.")
+		os.Remove(tmpFile)
+		return
+	}
+
+	// Find where current binary is
+	execPath, err := os.Executable()
+	if err != nil {
+		execPath = "/usr/local/bin/downbox"
+	}
+	execPath, _ = filepath.EvalSymlinks(execPath)
+
+	// Replace binary (may need sudo)
+	wasRunning := false
+	if _, running := readPid(); running {
+		wasRunning = true
+		fmt.Println("Stopping DownBox...")
+		cmdStop()
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	// Try direct copy first, fallback to sudo
+	if err := copyFile(tmpFile, execPath); err != nil {
+		cmd := exec.Command("sudo", "cp", tmpFile, execPath)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to update: %v\nTry: sudo cp %s %s\n", err, tmpFile, execPath)
+			os.Exit(1)
+		}
+	}
+	os.Remove(tmpFile)
+
+	fmt.Printf("Updated to %s\n", newVersion)
+
+	if wasRunning {
+		fmt.Println("Restarting...")
+		cmdStart(nil)
+	}
+}
+
+func copyFile(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0o755)
 }
 
 func cmdInit() {
@@ -109,6 +207,7 @@ Usage:
   downbox stop                                 Stop daemon
   downbox restart                              Restart daemon
   downbox status                               Show status
+  downbox update                               Update to latest version
 
 Config file (searched in order):
   ./downbox.conf
