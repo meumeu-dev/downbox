@@ -539,10 +539,21 @@
 
                 <div class="card settings-card">
                     <h3>IP Blocklist</h3>
-                    <label>Blocklist URL
-                        <input type="text" x-model="settingsData.blocklistUrl" placeholder="https://example.com/blocklist.dat">
-                        <small>URL to an IP blocklist (ipfilter.dat, P2P format, plain IP/CIDR). Auto-refreshed daily. Requires restart</small>
+                    <label>Blocklist
+                        <select @change="if($event.target.value !== 'custom') settingsData.blocklistUrl = $event.target.value">
+                            <option value="">Disabled</option>
+                            <option value="https://raw.githubusercontent.com/sahsu/ipfilter/master/ipfilter.dat" :selected="settingsData.blocklistUrl.includes('sahsu/ipfilter')">Level 1 — Anti-P2P orgs, trackers (recommended)</option>
+                            <option value="https://raw.githubusercontent.com/waelisa/Best-Blocklist/main/wael.list" :selected="settingsData.blocklistUrl.includes('Best-Blocklist')">Wael — Ads, malware, trackers</option>
+                            <option value="https://raw.githubusercontent.com/stamparm/ipsum/master/levels/3.txt" :selected="settingsData.blocklistUrl.includes('stamparm/ipsum')">IPsum Level 3 — Malicious IPs (threat intel)</option>
+                            <option value="custom" :selected="settingsData.blocklistUrl && !settingsData.blocklistUrl.includes('sahsu') && !settingsData.blocklistUrl.includes('Best-Blocklist') && !settingsData.blocklistUrl.includes('stamparm')">Custom URL...</option>
+                        </select>
                     </label>
+                    <div x-show="settingsData.blocklistUrl && !settingsData.blocklistUrl.includes('sahsu') && !settingsData.blocklistUrl.includes('Best-Blocklist') && !settingsData.blocklistUrl.includes('stamparm')" x-transition>
+                        <label>Custom URL
+                            <input type="text" x-model="settingsData.blocklistUrl" placeholder="https://example.com/blocklist.dat">
+                        </label>
+                    </div>
+                    <small x-show="settingsData.blocklistUrl">Auto-downloaded and refreshed daily. Built-in filtering proxy, no root needed. Requires restart</small>
                 </div>
 
                 <div class="settings-actions">
