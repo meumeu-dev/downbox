@@ -1,10 +1,10 @@
 # DownBox
 
-Lightweight self-hosted download station with web UI. Single binary, runs on a Raspberry Pi.
+Lightweight self-hosted download station with web UI. Upload, download and share files via tunnel. Single binary, runs on a Raspberry Pi.
 
 ![Go](https://img.shields.io/badge/Go-stdlib%20only-00ADD8)
 ![Size](https://img.shields.io/badge/binary-~7MB-green)
-![Arch](https://img.shields.io/badge/arch-amd64%20|%20arm64%20|%20armv7-blue)
+![Arch](https://img.shields.io/badge/arch-amd64%20|%20i386%20|%20arm64%20|%20armv7-blue)
 
 ## Install
 
@@ -12,13 +12,20 @@ Lightweight self-hosted download station with web UI. Single binary, runs on a R
 curl -sL meumeu.dev/downbox/install | bash
 ```
 
-Then open `http://localhost:8080` to configure.
+Custom port:
+
+```bash
+curl -sL meumeu.dev/downbox/install | PORT=9090 bash
+```
+
+Then open `http://localhost:8080` (or your custom port) to configure.
 
 ## Features
 
 - **aria2 engine** — HTTP, FTP, BitTorrent, magnet links. 16 connections per download.
+- **File upload** — Upload files directly from the web UI with progress tracking.
 - **File browser** — Browse, preview, download, delete. Share files with a direct link.
-- **Remote access** — Cloudflare Tunnel or Bore. Access your downloads from anywhere.
+- **Remote access** — Cloudflare Tunnel or Bore (custom server + secret supported). Access from anywhere.
 - **Setup wizard** — First-run web wizard to configure everything.
 - **Tiny footprint** — ~7MB binary, ~25MB RAM. No Docker, no database.
 
@@ -29,6 +36,7 @@ downbox start              # Start as daemon
 downbox stop               # Stop
 downbox restart             # Restart
 downbox status              # Show status
+downbox update              # Update to latest version
 downbox init                # Generate config file
 downbox help                # Show help
 ```
@@ -43,6 +51,14 @@ Config file is searched in order:
 ```
 port: 8080
 download-dir: ~/Downloads
+tunnel: bore
+bore-server: bore.pub
+bore-secret: your-secret
+```
+
+Or with Cloudflare Tunnel:
+
+```
 tunnel: cloudflared
 cloudflared-token: eyJ...
 cloudflared-hostname: dl.example.com
@@ -56,7 +72,7 @@ CLI flags override config file values.
 git clone https://github.com/meumeu-dev/downbox.git
 cd downbox
 make build          # local binary
-make build-all      # linux/amd64 + arm64 + armv7
+make build-all      # linux/amd64 + i386 + arm64 + armv7
 ```
 
 Requires Go 1.22+.
@@ -78,8 +94,8 @@ Requires Go 1.22+.
 ```
 
 - **0 external Go dependencies** — stdlib only
-- **Frontend** — Alpine.js + PicoCSS, embedded in binary
-- **Tunnel** — Cloudflare Tunnel (token) or Bore (free)
+- **Frontend** — Alpine.js, embedded in binary
+- **Tunnel** — Cloudflare Tunnel (token) or Bore (free/self-hosted)
 
 ## License
 
