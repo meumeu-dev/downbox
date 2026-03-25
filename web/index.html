@@ -515,15 +515,22 @@
                 <div class="card settings-card">
                     <h3>Downloads</h3>
                     <label>DNS-over-HTTPS
-                        <select x-model="settingsData.dohUrl">
-                            <option value="">Disabled (system DNS)</option>
-                            <option value="https://cloudflare-dns.com/dns-query">Cloudflare (1.1.1.1)</option>
-                            <option value="https://dns.google/resolve">Google (8.8.8.8)</option>
-                            <option value="https://dns.quad9.net:5053/dns-query">Quad9 (9.9.9.9 — malware blocking)</option>
-                            <option value="https://doh.mullvad.net/dns-query">Mullvad (privacy)</option>
+                        <select @change="if($event.target.value==='custom'){settingsData.dohUrl='https://'}else{settingsData.dohUrl=$event.target.value}">
+                            <option value="" :selected="!settingsData.dohUrl">Disabled (system DNS)</option>
+                            <option value="https://cloudflare-dns.com/dns-query" :selected="settingsData.dohUrl==='https://cloudflare-dns.com/dns-query'">Cloudflare (1.1.1.1)</option>
+                            <option value="https://dns.google/resolve" :selected="settingsData.dohUrl==='https://dns.google/resolve'">Google (8.8.8.8)</option>
+                            <option value="https://dns.quad9.net:5053/dns-query" :selected="settingsData.dohUrl==='https://dns.quad9.net:5053/dns-query'">Quad9 (malware blocking)</option>
+                            <option value="https://doh.mullvad.net/dns-query" :selected="settingsData.dohUrl==='https://doh.mullvad.net/dns-query'">Mullvad (privacy)</option>
+                            <option value="custom" :selected="settingsData.dohUrl && !['https://cloudflare-dns.com/dns-query','https://dns.google/resolve','https://dns.quad9.net:5053/dns-query','https://doh.mullvad.net/dns-query'].includes(settingsData.dohUrl)">Custom...</option>
                         </select>
-                        <small>Encrypted DNS for downloads. Prevents ISP snooping. Requires restart</small>
                     </label>
+                    <div x-show="settingsData.dohUrl && !['','https://cloudflare-dns.com/dns-query','https://dns.google/resolve','https://dns.quad9.net:5053/dns-query','https://doh.mullvad.net/dns-query'].includes(settingsData.dohUrl)" x-transition>
+                        <label>
+                            <input type="text" x-model="settingsData.dohUrl" placeholder="https://dns.nextdns.io/abc123">
+                            <small>NextDNS: https://dns.nextdns.io/YOUR_ID — AdGuard: https://dns.adguard-dns.com/dns-query</small>
+                        </label>
+                    </div>
+                    <small x-show="settingsData.dohUrl">Encrypted DNS for downloads. Prevents ISP snooping. Requires restart</small>
                     <label>Network interface
                         <select x-model="settingsData.interface">
                             <option value="">Default (all interfaces)</option>
