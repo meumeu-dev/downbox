@@ -228,7 +228,17 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 
 // --- Security helpers ---
 
-// validateDownloadURL blocks SSRF: file://, internal IPs, metadata endpoints
+// isPrivateIP checks if an IP is internal/private/loopback/link-local
+func isPrivateIP(ip net.IP) bool {
+	if ip == nil {
+		return true // treat unparseable as blocked
+	}
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsUnspecified() ||
+		ip.Equal(net.ParseIP("169.254.169.254")) // AWS metadata
+}
+
+// validateDownloadURL blocks SSRF: file://, internal IPs (including decimal/hex/octal), metadata endpoints
 func validateDownloadURL(rawURL string) error {
 	lower := strings.ToLower(rawURL)
 
@@ -258,25 +268,26 @@ func validateDownloadURL(rawURL string) error {
 		return fmt.Errorf("internal hosts are not allowed")
 	}
 
-	// Resolve hostname and check all IPs
+	// First: try parsing the host directly as an IP (catches decimal 2130706433, hex 0x7f000001, etc.)
+	// net.ParseIP only handles standard notation. For decimal/hex/octal, use net.ResolveIPAddr
+	if ipAddr, err := net.ResolveIPAddr("ip", host); err == nil {
+		if isPrivateIP(ipAddr.IP) {
+			return fmt.Errorf("internal/private IPs are not allowed")
+		}
+		return nil // valid public IP literal
+	}
+
+	// It's a hostname — resolve via DNS
 	ips, err := net.LookupHost(host)
 	if err != nil {
-		// If we can't resolve, let aria2 try (it might be a valid external host)
-		return nil
+		// Can't resolve = block it (don't let aria2 try something we can't validate)
+		return fmt.Errorf("cannot resolve host: %s", host)
 	}
 
 	for _, ipStr := range ips {
 		ip := net.ParseIP(ipStr)
-		if ip == nil {
-			continue
-		}
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-			ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		if isPrivateIP(ip) {
 			return fmt.Errorf("internal/private IPs are not allowed")
-		}
-		// Block AWS/cloud metadata (169.254.169.254)
-		if ip.Equal(net.ParseIP("169.254.169.254")) {
-			return fmt.Errorf("metadata endpoint blocked")
 		}
 	}
 
