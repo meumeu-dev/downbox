@@ -17,6 +17,9 @@ ENV DOWNBOX_BIND=0.0.0.0
 
 VOLUME /downloads
 EXPOSE 8080
+EXPOSE 6881-6999
+
+HEALTHCHECK --interval=30s --timeout=3s CMD wget -qO- http://localhost:8080/api/login || exit 1
 
 ENTRYPOINT ["downbox"]
 CMD ["-download-dir", "/downloads"]
