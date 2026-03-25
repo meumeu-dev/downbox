@@ -43,6 +43,8 @@ downbox help                # Show help
 
 ## Config
 
+> **Never commit `downbox.conf` to git** — it may contain tunnel tokens and secrets. The file is gitignored by default.
+
 Config file is searched in order:
 1. `./downbox.conf`
 2. `~/.config/downbox/downbox.conf`
