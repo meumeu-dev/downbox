@@ -2,9 +2,9 @@
 set -e
 
 # DownBox installer
-# Usage: curl -sL https://dl.meumeu.dev/install.sh | bash
+# Usage: curl -sL meumeu.dev/downbox/install | bash
 
-REPO="freelux/downbox"
+REPO="meumeu-dev/downbox"
 INSTALL_DIR="/usr/local/bin"
 
 # Colors
@@ -15,9 +15,9 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 info() { printf "${CYAN}[*]${NC} %s\n" "$1"; }
-ok() { printf "${GREEN}[+]${NC} %s\n" "$1"; }
+ok()   { printf "${GREEN}[+]${NC} %s\n" "$1"; }
 warn() { printf "${YELLOW}[!]${NC} %s\n" "$1"; }
-err() { printf "${RED}[-]${NC} %s\n" "$1"; exit 1; }
+err()  { printf "${RED}[-]${NC} %s\n" "$1"; exit 1; }
 
 # Check OS
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -65,54 +65,48 @@ fi
 
 # Download DownBox
 info "Downloading DownBox (linux/$ARCH)..."
-LATEST=$(curl -sI "https://github.com/$REPO/releases/latest" | grep -i "location:" | grep -oP 'tag/\K[^\s\r]+')
-if [ -z "$LATEST" ]; then
-    # Fallback: download from main branch build
-    DOWNLOAD_URL="https://github.com/$REPO/releases/latest/download/downbox-$ARCH"
-else
-    DOWNLOAD_URL="https://github.com/$REPO/releases/download/$LATEST/downbox-$ARCH"
+DOWNLOAD_URL="https://github.com/$REPO/releases/latest/download/downbox-$ARCH"
+
+if ! curl -fSL "$DOWNLOAD_URL" -o /tmp/downbox 2>/dev/null; then
+    err "Download failed. Check https://github.com/$REPO/releases"
 fi
 
-curl -fsSL "$DOWNLOAD_URL" -o /tmp/downbox || err "Download failed. Check https://github.com/$REPO/releases"
 chmod +x /tmp/downbox
 $SUDO mv /tmp/downbox "$INSTALL_DIR/downbox"
 ok "DownBox installed to $INSTALL_DIR/downbox"
 
 # Optional: install bore
 if ! command -v bore >/dev/null 2>&1; then
-    info "Installing bore (tunnel tool)..."
-    BORE_VER=$(curl -sL "https://api.github.com/repos/ekzhang/bore/releases/latest" | grep '"tag_name"' | cut -d'"' -f4)
-    if [ -n "$BORE_VER" ]; then
-        case "$ARCH" in
-            amd64) BORE_ARCH="x86_64-unknown-linux-musl" ;;
-            arm64) BORE_ARCH="aarch64-unknown-linux-musl" ;;
-            *)     BORE_ARCH="" ;;
-        esac
-        if [ -n "$BORE_ARCH" ]; then
-            curl -fsSL "https://github.com/ekzhang/bore/releases/download/$BORE_VER/bore-$BORE_VER-$BORE_ARCH.tar.gz" -o /tmp/bore.tar.gz
+    info "Installing bore (optional tunnel tool)..."
+    case "$ARCH" in
+        amd64) BORE_ARCH="x86_64-unknown-linux-musl" ;;
+        arm64) BORE_ARCH="aarch64-unknown-linux-musl" ;;
+        *)     BORE_ARCH="" ;;
+    esac
+    if [ -n "$BORE_ARCH" ]; then
+        BORE_VER=$(curl -sL "https://api.github.com/repos/ekzhang/bore/releases/latest" | grep '"tag_name"' | cut -d'"' -f4)
+        if [ -n "$BORE_VER" ] && curl -fSL "https://github.com/ekzhang/bore/releases/download/$BORE_VER/bore-$BORE_VER-$BORE_ARCH.tar.gz" -o /tmp/bore.tar.gz 2>/dev/null; then
             tar xzf /tmp/bore.tar.gz -C /tmp
             $SUDO mv /tmp/bore "$INSTALL_DIR/bore"
             rm -f /tmp/bore.tar.gz
             ok "bore installed"
+        else
+            warn "Could not install bore (optional, skip)"
         fi
     fi
 fi
 
-# Init config
-downbox init 2>/dev/null || true
-
 # Start
 info "Starting DownBox..."
-downbox start
+downbox start 2>/dev/null || downbox 2>/dev/null &
 
 echo ""
 printf "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
-printf "${GREEN}  DownBox installed successfully!${NC}\n"
-printf "${GREEN}  Open http://localhost:8080 to configure${NC}\n"
+printf "${GREEN}  DownBox installed!${NC}\n"
+printf "${GREEN}  Open ${CYAN}http://localhost:8080${GREEN} to configure${NC}\n"
 printf "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}\n"
 echo ""
-echo "Commands:"
-echo "  downbox start    Start DownBox"
-echo "  downbox stop     Stop DownBox"
-echo "  downbox status   Check status"
+echo "  downbox start    Start"
+echo "  downbox stop     Stop"
+echo "  downbox status   Status"
 echo ""
