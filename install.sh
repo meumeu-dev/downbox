@@ -67,7 +67,7 @@ fi
 info "Downloading DownBox (linux/$ARCH)..."
 DOWNLOAD_URL="https://github.com/$REPO/releases/latest/download/downbox-$ARCH"
 
-if ! curl -fSL "$DOWNLOAD_URL" -o /tmp/downbox 2>/dev/null; then
+if ! curl -fSL --progress-bar "$DOWNLOAD_URL" -o /tmp/downbox < /dev/null; then
     err "Download failed. Check https://github.com/$REPO/releases"
 fi
 
@@ -84,8 +84,8 @@ if ! command -v bore >/dev/null 2>&1; then
         *)     BORE_ARCH="" ;;
     esac
     if [ -n "$BORE_ARCH" ]; then
-        BORE_VER=$(curl -sL "https://api.github.com/repos/ekzhang/bore/releases/latest" | grep '"tag_name"' | cut -d'"' -f4)
-        if [ -n "$BORE_VER" ] && curl -fSL "https://github.com/ekzhang/bore/releases/download/$BORE_VER/bore-$BORE_VER-$BORE_ARCH.tar.gz" -o /tmp/bore.tar.gz 2>/dev/null; then
+        BORE_VER=$(curl -sL "https://api.github.com/repos/ekzhang/bore/releases/latest" < /dev/null | grep '"tag_name"' | cut -d'"' -f4)
+        if [ -n "$BORE_VER" ] && curl -fSL "https://github.com/ekzhang/bore/releases/download/$BORE_VER/bore-$BORE_VER-$BORE_ARCH.tar.gz" -o /tmp/bore.tar.gz < /dev/null 2>/dev/null; then
             tar xzf /tmp/bore.tar.gz -C /tmp
             $SUDO mv /tmp/bore "$INSTALL_DIR/bore"
             rm -f /tmp/bore.tar.gz
