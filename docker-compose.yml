@@ -1,0 +1,16 @@
+services:
+  downbox:
+    build: .
+    image: meumeudev/downbox
+    container_name: downbox
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./downloads:/downloads
+      - downbox-config:/home/downbox/.config/downbox
+    environment:
+      - DOWNBOX_BIND=0.0.0.0
+
+volumes:
+  downbox-config:

@@ -1,0 +1,7 @@
+dist/
+.git/
+.github/
+*.exe
+.DS_Store
+downbox.conf
+.wrangler/

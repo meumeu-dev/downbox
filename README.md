@@ -20,6 +20,18 @@ curl -sL meumeu.dev/downbox/install | PORT=9090 bash
 
 Then open `http://localhost:8080` (or your custom port) to configure.
 
+### Docker
+
+```bash
+docker run -d -p 8080:8080 -v ~/Downloads:/downloads meumeudev/downbox
+```
+
+Or with docker-compose:
+
+```bash
+docker compose up -d
+```
+
 ## Features
 
 - **aria2 engine** — HTTP, FTP, BitTorrent, magnet links. 16 connections per download.
