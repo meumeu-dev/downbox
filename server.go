@@ -61,14 +61,20 @@ func NewServer(cfg *Config, aria2Client *aria2.Client, fileHandler *files.Handle
 // --- Middleware ---
 
 func withMiddleware(cfg *Config, next http.Handler) http.Handler {
-	return recoveryMiddleware(loggingMiddleware(authMiddleware(cfg.Password, next)))
+	return recoveryMiddleware(loggingMiddleware(authMiddleware(cfg, next)))
 }
 
-func authMiddleware(password string, next http.Handler) http.Handler {
-	passHash := sha256.Sum256([]byte(password))
+func authMiddleware(cfg *Config, next http.Handler) http.Handler {
+	passHash := sha256.Sum256([]byte(cfg.Password))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Share links are public — no auth needed
 		if strings.HasPrefix(r.URL.Path, "/s/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Setup wizard endpoints — allow without auth when setup not done
+		if !cfg.SetupDone && (r.URL.Path == "/api/setup/status" || r.URL.Path == "/api/setup/defaults" || r.URL.Path == "/api/setup/save") {
 			next.ServeHTTP(w, r)
 			return
 		}
