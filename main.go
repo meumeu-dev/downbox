@@ -69,6 +69,7 @@ type Config struct {
 	Interface           string // network interface for downloads: "tun0", "eth0"
 	ExcludeTrackers     string // comma-separated tracker URIs to block, or "*"
 	Proxy               string // SOCKS/HTTP proxy: "socks5://127.0.0.1:9050"
+	DoHURL              string // DNS-over-HTTPS resolver: "https://1.1.1.1/dns-query"
 	BlocklistURL        string // URL to ipfilter.dat / blocklist (auto-downloaded)
 	BlocklistPort       int    // fixed port for built-in SOCKS proxy (0 = auto)
 	SetupDone           bool

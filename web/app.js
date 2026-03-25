@@ -14,7 +14,7 @@ function downbox() {
         wizardError: '',
 
         // Settings
-        settingsData: { tunnel: 'none', cloudflaredToken: '', cloudflaredHostname: '', boreServer: '', boreSecret: '', port: 8080, downloadDir: '~/Downloads', dnsServers: '', interface: '', excludeTrackers: '', proxy: '', blocklistUrl: '' },
+        settingsData: { tunnel: 'none', cloudflaredToken: '', cloudflaredHostname: '', boreServer: '', boreSecret: '', port: 8080, downloadDir: '~/Downloads', dnsServers: '', interface: '', excludeTrackers: '', proxy: '', dohUrl: '', blocklistUrl: '' },
         availableInterfaces: [],
         settingsSaving: false,
         settingsSaved: false,
@@ -304,6 +304,7 @@ function downbox() {
                     interface: s.config?.interface || '',
                     excludeTrackers: s.config?.excludeTrackers || '',
                     proxy: s.config?.proxy || '',
+                    dohUrl: s.config?.dohUrl || '',
                     blocklistUrl: s.config?.blocklistUrl || '',
                 };
                 // Fetch available interfaces

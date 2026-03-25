@@ -3,11 +3,13 @@ package main
 import (
 	"bufio"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,9 +35,10 @@ func NewBlocklistManager(cfg *Config) *BlocklistManager {
 	}
 }
 
-// Start downloads all blocklists and starts the filtering SOCKS5 proxy
+// Start downloads all blocklists and starts the filtering SOCKS5 proxy.
+// Also starts if DoH is configured (even without a blocklist).
 func (bm *BlocklistManager) Start() error {
-	if bm.cfg.BlocklistURL == "" {
+	if bm.cfg.BlocklistURL == "" && bm.cfg.DoHURL == "" {
 		return nil
 	}
 
@@ -63,11 +66,9 @@ func (bm *BlocklistManager) Start() error {
 		}
 	}
 
-	if len(bm.networks) == 0 {
-		return fmt.Errorf("no blocklist entries loaded")
+	if len(bm.networks) > 0 {
+		slog.Info("blocklist total entries", "count", len(bm.networks))
 	}
-
-	slog.Info("blocklist total entries", "count", len(bm.networks))
 	return bm.startProxy()
 }
 
@@ -269,6 +270,69 @@ func ipRangeToNets(startStr, endStr string) []*net.IPNet {
 	return nets
 }
 
+// --- DNS resolution (DoH or system) ---
+
+// resolveHost resolves a hostname via DoH if configured, otherwise system DNS
+func (bm *BlocklistManager) resolveHost(host string) ([]string, error) {
+	// If it's already an IP, return it directly
+	if net.ParseIP(host) != nil {
+		return []string{host}, nil
+	}
+
+	if bm.cfg.DoHURL != "" {
+		return bm.resolveDoH(host)
+	}
+	return net.LookupHost(host)
+}
+
+// resolveDoH resolves a hostname via DNS-over-HTTPS (JSON API)
+func (bm *BlocklistManager) resolveDoH(host string) ([]string, error) {
+	u, err := url.Parse(bm.cfg.DoHURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid DoH URL: %w", err)
+	}
+	q := u.Query()
+	q.Set("name", host)
+	q.Set("type", "A")
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/dns-json")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		// Fallback to system DNS if DoH fails
+		slog.Debug("DoH failed, falling back to system DNS", "host", host, "error", err)
+		return net.LookupHost(host)
+	}
+	defer resp.Body.Close()
+
+	var dohResp struct {
+		Answer []struct {
+			Type int    `json:"type"`
+			Data string `json:"data"`
+		} `json:"Answer"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&dohResp); err != nil {
+		return net.LookupHost(host)
+	}
+
+	var ips []string
+	for _, a := range dohResp.Answer {
+		if a.Type == 1 || a.Type == 28 { // A or AAAA
+			ips = append(ips, a.Data)
+		}
+	}
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("no DNS records for %s", host)
+	}
+	return ips, nil
+}
+
 // --- Built-in SOCKS5 filtering proxy ---
 
 // maxSOCKS5Conns limits concurrent SOCKS5 proxy connections to prevent FD exhaustion.
@@ -381,10 +445,9 @@ func (bm *BlocklistManager) handleSOCKS5(conn net.Conn) {
 	}
 	port := binary.BigEndian.Uint16(buf[:2])
 
-	// 3. Resolve and check blocklist
-	ips, err := net.LookupHost(host)
+	// 3. Resolve (via DoH if configured) and check blocklist
+	ips, err := bm.resolveHost(host)
 	if err != nil {
-		// Connection refused reply
 		conn.Write([]byte{0x05, 0x04, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
 		return
 	}

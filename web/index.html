@@ -514,9 +514,15 @@
 
                 <div class="card settings-card">
                     <h3>Downloads</h3>
-                    <label>DNS servers
-                        <input type="text" x-model="settingsData.dnsServers" placeholder="1.1.1.1,8.8.8.8">
-                        <small>Custom DNS for downloads. Comma-separated. Empty = system DNS</small>
+                    <label>DNS-over-HTTPS
+                        <select x-model="settingsData.dohUrl">
+                            <option value="">Disabled (system DNS)</option>
+                            <option value="https://cloudflare-dns.com/dns-query">Cloudflare (1.1.1.1)</option>
+                            <option value="https://dns.google/resolve">Google (8.8.8.8)</option>
+                            <option value="https://dns.quad9.net:5053/dns-query">Quad9 (9.9.9.9 — malware blocking)</option>
+                            <option value="https://doh.mullvad.net/dns-query">Mullvad (privacy)</option>
+                        </select>
+                        <small>Encrypted DNS for downloads. Prevents ISP snooping. Requires restart</small>
                     </label>
                     <label>Network interface
                         <select x-model="settingsData.interface">

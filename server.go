@@ -643,6 +643,7 @@ func handleSetupSave(cfg *Config, tunnelMgr *TunnelManager) http.HandlerFunc {
 			Interface           string `json:"interface"`
 			ExcludeTrackers     string `json:"excludeTrackers"`
 			Proxy               string `json:"proxy"`
+			DoHURL              string `json:"dohUrl"`
 			BlocklistURL        string `json:"blocklistUrl"`
 		}
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
@@ -667,6 +668,7 @@ func handleSetupSave(cfg *Config, tunnelMgr *TunnelManager) http.HandlerFunc {
 		cfg.Interface = req.Interface
 		cfg.ExcludeTrackers = req.ExcludeTrackers
 		cfg.Proxy = req.Proxy
+		cfg.DoHURL = req.DoHURL
 		cfg.BlocklistURL = req.BlocklistURL
 		cfg.SetupDone = true
 
@@ -691,7 +693,7 @@ func handleSetupSave(cfg *Config, tunnelMgr *TunnelManager) http.HandlerFunc {
 			CloudflaredHostname: cfg.CloudflaredHostname, BoreServer: cfg.BoreServer,
 			BoreSecret: cfg.BoreSecret, Password: cfg.Password, DNSServers: cfg.DNSServers,
 			Interface: cfg.Interface, ExcludeTrackers: cfg.ExcludeTrackers,
-			Proxy: cfg.Proxy, BlocklistURL: cfg.BlocklistURL,
+			Proxy: cfg.Proxy, DoHURL: cfg.DoHURL, BlocklistURL: cfg.BlocklistURL,
 			BlocklistPort: cfg.BlocklistPort, SetupDone: cfg.SetupDone,
 		}
 		cfg.mu.Unlock()
@@ -843,6 +845,7 @@ func handleStatus(cfg *Config, client *aria2.Client, tunnelMgr *TunnelManager) h
 		dnsServers := cfg.DNSServers
 		iface := cfg.Interface
 		excludeTrackers := cfg.ExcludeTrackers
+		dohURL := cfg.DoHURL
 		blocklistURL := cfg.BlocklistURL
 		cfg.mu.RUnlock()
 
@@ -864,6 +867,7 @@ func handleStatus(cfg *Config, client *aria2.Client, tunnelMgr *TunnelManager) h
 				"dnsServers":          dnsServers,
 				"interface":           iface,
 				"excludeTrackers":     excludeTrackers,
+				"dohUrl":              dohURL,
 				"blocklistUrl":        blocklistURL,
 			},
 		}

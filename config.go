@@ -103,6 +103,9 @@ func loadConfig(cfg *Config, flagsSet map[string]bool) string {
 		if v, ok := values["proxy"]; ok {
 			cfg.Proxy = v
 		}
+		if v, ok := values["doh-url"]; ok {
+			cfg.DoHURL = v
+		}
 		if v, ok := values["blocklist-url"]; ok {
 			cfg.BlocklistURL = v
 		}
@@ -180,6 +183,9 @@ func saveConfig(cfg *Config) error {
 	}
 	if cfg.Proxy != "" {
 		b.WriteString(fmt.Sprintf("proxy: %s\n", s(cfg.Proxy)))
+	}
+	if cfg.DoHURL != "" {
+		b.WriteString(fmt.Sprintf("doh-url: %s\n", s(cfg.DoHURL)))
 	}
 	if cfg.BlocklistURL != "" {
 		b.WriteString(fmt.Sprintf("blocklist-url: %s\n", s(cfg.BlocklistURL)))
