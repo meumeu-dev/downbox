@@ -1,16 +1,21 @@
 package main
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -61,11 +66,29 @@ func NewServer(cfg *Config, aria2Client *aria2.Client, fileHandler *files.Handle
 // --- Middleware ---
 
 func withMiddleware(cfg *Config, next http.Handler) http.Handler {
-	return recoveryMiddleware(loggingMiddleware(authMiddleware(cfg, next)))
+	return recoveryMiddleware(securityHeaders(loggingMiddleware(authMiddleware(cfg, next))))
+}
+
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func authMiddleware(cfg *Config, next http.Handler) http.Handler {
 	passHash := sha256.Sum256([]byte(cfg.Password))
+
+	// Session tokens: map[tokenHash] -> expiry
+	var sessions sync.Map
+
+	// Rate limiter for login: map[ip] -> lastAttempt
+	var loginAttempts sync.Map
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Share links are public — no auth needed
 		if strings.HasPrefix(r.URL.Path, "/s/") {
@@ -79,17 +102,33 @@ func authMiddleware(cfg *Config, next http.Handler) http.Handler {
 			return
 		}
 
-		// Check cookie first
-		if c, err := r.Cookie("downbox_auth"); err == nil {
-			h := sha256.Sum256([]byte(c.Value))
-			if subtle.ConstantTimeCompare(h[:], passHash[:]) == 1 {
-				next.ServeHTTP(w, r)
-				return
+		// Check session cookie
+		if c, err := r.Cookie("downbox_session"); err == nil {
+			tokenHash := sha256.Sum256([]byte(c.Value))
+			if exp, ok := sessions.Load(tokenHash); ok {
+				if time.Now().Before(exp.(time.Time)) {
+					next.ServeHTTP(w, r)
+					return
+				}
+				sessions.Delete(tokenHash)
 			}
 		}
 
 		// Login endpoint
 		if r.URL.Path == "/api/login" && r.Method == "POST" {
+			// Rate limit: 1 attempt per 2 seconds per IP
+			ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+			if ip == "" {
+				ip = r.RemoteAddr
+			}
+			if last, ok := loginAttempts.Load(ip); ok {
+				if time.Since(last.(time.Time)) < 2*time.Second {
+					writeError(w, http.StatusTooManyRequests, "too many attempts, wait a moment")
+					return
+				}
+			}
+			loginAttempts.Store(ip, time.Now())
+
 			var req struct {
 				Password string `json:"password"`
 			}
@@ -99,13 +138,20 @@ func authMiddleware(cfg *Config, next http.Handler) http.Handler {
 			}
 			h := sha256.Sum256([]byte(req.Password))
 			if subtle.ConstantTimeCompare(h[:], passHash[:]) == 1 {
+				// Generate random session token
+				tokenBytes := make([]byte, 32)
+				rand.Read(tokenBytes)
+				token := hex.EncodeToString(tokenBytes)
+				tokenHash := sha256.Sum256([]byte(token))
+				sessions.Store(tokenHash, time.Now().Add(30*24*time.Hour))
+
 				http.SetCookie(w, &http.Cookie{
-					Name:     "downbox_auth",
-					Value:    req.Password,
+					Name:     "downbox_session",
+					Value:    token,
 					Path:     "/",
 					MaxAge:   86400 * 30,
 					HttpOnly: true,
-					SameSite: http.SameSiteStrictMode,
+					SameSite: http.SameSiteLaxMode,
 				})
 				writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 			} else {
@@ -180,6 +226,85 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
+// --- Security helpers ---
+
+// validateDownloadURL blocks SSRF: file://, internal IPs, metadata endpoints
+func validateDownloadURL(rawURL string) error {
+	lower := strings.ToLower(rawURL)
+
+	// Only allow http(s), magnet, ftp
+	if !strings.HasPrefix(lower, "http://") && !strings.HasPrefix(lower, "https://") &&
+		!strings.HasPrefix(lower, "ftp://") && !strings.HasPrefix(lower, "magnet:") {
+		return fmt.Errorf("only http(s), ftp and magnet URLs are allowed")
+	}
+
+	// Magnet links are safe (no network target to validate)
+	if strings.HasPrefix(lower, "magnet:") {
+		return nil
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL")
+	}
+
+	host := parsed.Hostname()
+	if host == "" {
+		return fmt.Errorf("missing host")
+	}
+
+	// Block localhost variants
+	if host == "localhost" || host == "0.0.0.0" || strings.HasSuffix(host, ".local") {
+		return fmt.Errorf("internal hosts are not allowed")
+	}
+
+	// Resolve hostname and check all IPs
+	ips, err := net.LookupHost(host)
+	if err != nil {
+		// If we can't resolve, let aria2 try (it might be a valid external host)
+		return nil
+	}
+
+	for _, ipStr := range ips {
+		ip := net.ParseIP(ipStr)
+		if ip == nil {
+			continue
+		}
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+			ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+			return fmt.Errorf("internal/private IPs are not allowed")
+		}
+		// Block AWS/cloud metadata (169.254.169.254)
+		if ip.Equal(net.ParseIP("169.254.169.254")) {
+			return fmt.Errorf("metadata endpoint blocked")
+		}
+	}
+
+	return nil
+}
+
+// filterAria2Options whitelist — only safe options pass through
+func filterAria2Options(opts map[string]string) map[string]string {
+	if opts == nil {
+		return nil
+	}
+	allowed := map[string]bool{
+		"split": true, "max-connection-per-server": true,
+		"min-split-size": true, "header": true, "referer": true,
+		"user-agent": true, "check-integrity": true,
+	}
+	safe := make(map[string]string)
+	for k, v := range opts {
+		if allowed[k] {
+			safe[k] = v
+		}
+	}
+	if len(safe) == 0 {
+		return nil
+	}
+	return safe
+}
+
 // --- Download handlers ---
 
 func handleListDownloads(client *aria2.Client) http.HandlerFunc {
@@ -242,24 +367,13 @@ func handleAddDownload(client *aria2.Client) http.HandlerFunc {
 		}
 
 		// Block dangerous URLs (SSRF)
-		lower := strings.ToLower(req.URL)
-		if strings.HasPrefix(lower, "file:") {
-			writeError(w, http.StatusBadRequest, "file:// URLs are not allowed")
+		if err := validateDownloadURL(req.URL); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
-		// Block dangerous aria2 options
-		blocked := map[string]bool{
-			"dir": true, "out": true, "log": true,
-			"on-download-complete": true, "on-download-error": true,
-			"on-bt-download-complete": true, "on-download-start": true,
-			"on-download-pause": true, "on-download-stop": true,
-		}
-		for k := range req.Options {
-			if blocked[k] {
-				delete(req.Options, k)
-			}
-		}
+		// Whitelist safe aria2 options only
+		req.Options = filterAria2Options(req.Options)
 
 		gid, err := client.AddURI([]string{req.URL}, req.Options)
 		if err != nil {
