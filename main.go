@@ -557,7 +557,7 @@ func runServer(args []string) {
 	)
 
 	// Blocklist — start before aria2 so the filtering proxy is ready
-	blocklistMgr := NewBlocklistManager(cfg)
+	blocklistMgr := NewBlocklistManager(&cfg)
 	if err := blocklistMgr.Start(); err != nil {
 		slog.Warn("blocklist failed", "error", err)
 	}
@@ -570,7 +570,7 @@ func runServer(args []string) {
 	}
 
 	// --- Start aria2 as subprocess ---
-	aria2Cmd, err := startAria2(cfg)
+	aria2Cmd, err := startAria2(&cfg)
 	if err != nil {
 		slog.Error("failed to start aria2", "error", err)
 		os.Exit(1)
@@ -599,7 +599,7 @@ func runServer(args []string) {
 	}
 
 	// Tunnel manager
-	tunnelMgr := NewTunnelManager(cfg)
+	tunnelMgr := NewTunnelManager(&cfg)
 	if cfg.SetupDone && cfg.Tunnel != "" && cfg.Tunnel != "none" {
 		if err := tunnelMgr.Start(); err != nil {
 			slog.Warn("tunnel failed to start", "error", err)
@@ -658,7 +658,7 @@ func runServer(args []string) {
 }
 
 // startAria2 launches aria2c as a managed subprocess.
-func startAria2(cfg Config) (*exec.Cmd, error) {
+func startAria2(cfg *Config) (*exec.Cmd, error) {
 	aria2Path, err := exec.LookPath("aria2c")
 	if err != nil {
 		return nil, fmt.Errorf("aria2c not found in PATH — install it: sudo apt install aria2")

@@ -682,9 +682,18 @@ func handleSetupSave(cfg *Config, tunnelMgr *TunnelManager) http.HandlerFunc {
 			cfg.PublicURL = ""
 		}
 
-		// Copy values needed after unlock
+		// Copy config for use after unlock (avoid copying the mutex)
 		tunnelType := cfg.Tunnel
-		cfgCopy := *cfg
+		cfgCopy := Config{
+			Port: cfg.Port, DownloadDir: cfg.DownloadDir, Aria2URL: cfg.Aria2URL,
+			Aria2Secret: cfg.Aria2Secret, Aria2Port: cfg.Aria2Port, PublicURL: cfg.PublicURL,
+			Tunnel: cfg.Tunnel, CloudflaredToken: cfg.CloudflaredToken,
+			CloudflaredHostname: cfg.CloudflaredHostname, BoreServer: cfg.BoreServer,
+			BoreSecret: cfg.BoreSecret, Password: cfg.Password, DNSServers: cfg.DNSServers,
+			Interface: cfg.Interface, ExcludeTrackers: cfg.ExcludeTrackers,
+			Proxy: cfg.Proxy, BlocklistURL: cfg.BlocklistURL,
+			BlocklistPort: cfg.BlocklistPort, SetupDone: cfg.SetupDone,
+		}
 		cfg.mu.Unlock()
 
 		// Clear all sessions — config (possibly password) changed
@@ -703,7 +712,15 @@ func handleSetupSave(cfg *Config, tunnelMgr *TunnelManager) http.HandlerFunc {
 		// Start tunnel if configured
 		if tunnelType != "" && tunnelType != "none" {
 			tunnelMgr.Stop()
-			tunnelMgr.cfg = cfgCopy
+			// Update tunnel config without copying the mutex
+			tunnelMgr.cfg.mu.Lock()
+			tunnelMgr.cfg.Port = cfgCopy.Port
+			tunnelMgr.cfg.Tunnel = cfgCopy.Tunnel
+			tunnelMgr.cfg.CloudflaredToken = cfgCopy.CloudflaredToken
+			tunnelMgr.cfg.CloudflaredHostname = cfgCopy.CloudflaredHostname
+			tunnelMgr.cfg.BoreServer = cfgCopy.BoreServer
+			tunnelMgr.cfg.BoreSecret = cfgCopy.BoreSecret
+			tunnelMgr.cfg.mu.Unlock()
 			if err := tunnelMgr.Start(); err != nil {
 				slog.Warn("tunnel start failed after setup", "error", err)
 			}

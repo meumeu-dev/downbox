@@ -17,7 +17,7 @@ import (
 
 // BlocklistManager handles IP blocklist + built-in SOCKS5 filtering proxy
 type BlocklistManager struct {
-	cfg       Config
+	cfg       *Config
 	cacheFile string
 	networks  []*net.IPNet
 	listener  net.Listener
@@ -25,7 +25,7 @@ type BlocklistManager struct {
 	mu        sync.RWMutex
 }
 
-func NewBlocklistManager(cfg Config) *BlocklistManager {
+func NewBlocklistManager(cfg *Config) *BlocklistManager {
 	home, _ := os.UserHomeDir()
 	return &BlocklistManager{
 		cfg:       cfg,
@@ -399,7 +399,7 @@ func (bm *BlocklistManager) handleSOCKS5(conn net.Conn) {
 	}
 
 	// 4. Connect to target
-	target := fmt.Sprintf("%s:%d", host, port)
+	target := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 
 	var upstream net.Conn
 	if bm.cfg.Proxy != "" {

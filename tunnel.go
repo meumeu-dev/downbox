@@ -16,7 +16,7 @@ import (
 var boreURLRegex = regexp.MustCompile(`listening at ([^\s]+:\d+)`)
 
 type TunnelManager struct {
-	cfg    Config
+	cfg    *Config
 	cmd    *exec.Cmd
 	url    string
 	status string // stopped, starting, running, error
@@ -25,7 +25,7 @@ type TunnelManager struct {
 	cancel context.CancelFunc
 }
 
-func NewTunnelManager(cfg Config) *TunnelManager {
+func NewTunnelManager(cfg *Config) *TunnelManager {
 	return &TunnelManager{cfg: cfg, status: "stopped"}
 }
 
