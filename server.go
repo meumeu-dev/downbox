@@ -668,6 +668,19 @@ func handleSetupSave(cfg *Config, tunnelMgr *TunnelManager) http.HandlerFunc {
 		cfg.Interface = req.Interface
 		cfg.ExcludeTrackers = req.ExcludeTrackers
 		cfg.Proxy = req.Proxy
+		// Validate DoH URL: must be HTTPS, non-private IP
+		if req.DoHURL != "" {
+			if !strings.HasPrefix(strings.ToLower(req.DoHURL), "https://") {
+				cfg.mu.Unlock()
+				writeError(w, http.StatusBadRequest, "DoH URL must use HTTPS")
+				return
+			}
+			if err := validateDownloadURL(req.DoHURL); err != nil {
+				cfg.mu.Unlock()
+				writeError(w, http.StatusBadRequest, "invalid DoH URL: "+err.Error())
+				return
+			}
+		}
 		cfg.DoHURL = req.DoHURL
 		cfg.BlocklistURL = req.BlocklistURL
 		cfg.SetupDone = true

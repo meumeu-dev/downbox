@@ -285,7 +285,8 @@ func (bm *BlocklistManager) resolveHost(host string) ([]string, error) {
 	return net.LookupHost(host)
 }
 
-// resolveDoH resolves a hostname via DNS-over-HTTPS (JSON API)
+// resolveDoH resolves a hostname via DNS-over-HTTPS (JSON API).
+// DoH URL must be HTTPS with a non-private IP (validated at config save time).
 func (bm *BlocklistManager) resolveDoH(host string) ([]string, error) {
 	u, err := url.Parse(bm.cfg.DoHURL)
 	if err != nil {
@@ -324,7 +325,9 @@ func (bm *BlocklistManager) resolveDoH(host string) ([]string, error) {
 	var ips []string
 	for _, a := range dohResp.Answer {
 		if a.Type == 1 || a.Type == 28 { // A or AAAA
-			ips = append(ips, a.Data)
+			if net.ParseIP(a.Data) != nil {
+				ips = append(ips, a.Data)
+			}
 		}
 	}
 	if len(ips) == 0 {
