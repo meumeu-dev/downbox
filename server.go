@@ -116,6 +116,26 @@ func authMiddleware(cfg *Config, next http.Handler) http.Handler {
 	// Rate limiter for login: map[ip] -> lastAttempt
 	var loginAttempts sync.Map
 
+	// Periodic cleanup of stale rate-limit and session entries
+	go func() {
+		for {
+			time.Sleep(5 * time.Minute)
+			now := time.Now()
+			loginAttempts.Range(func(key, val interface{}) bool {
+				if now.Sub(val.(time.Time)) > time.Minute {
+					loginAttempts.Delete(key)
+				}
+				return true
+			})
+			sessions.Range(func(key, val interface{}) bool {
+				if now.After(val.(time.Time)) {
+					sessions.Delete(key)
+				}
+				return true
+			})
+		}
+	}()
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Share links are public — no auth needed
 		if strings.HasPrefix(r.URL.Path, "/s/") {
@@ -392,9 +412,14 @@ func resolveAndValidateURL(rawURL string) (pinResult, error) {
 	}
 
 	lower := strings.ToLower(rawURL)
-	// Magnet/FTP — no redirects to follow
-	if strings.HasPrefix(lower, "magnet:") || strings.HasPrefix(lower, "ftp://") {
+	// Magnet — no network target to validate
+	if strings.HasPrefix(lower, "magnet:") {
 		return pinResult{URL: rawURL}, nil
+	}
+
+	// FTP — no redirects but still pin IP to prevent DNS rebinding
+	if strings.HasPrefix(lower, "ftp://") {
+		return pinHostToIP(rawURL)
 	}
 
 	// Follow redirects manually (max 10 hops)
@@ -584,8 +609,11 @@ func handleResumeDownload(client *aria2.Client) http.HandlerFunc {
 
 func handleSetupStatus(cfg *Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		cfg.mu.RLock()
+		setupDone := cfg.SetupDone
+		cfg.mu.RUnlock()
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"needsSetup": !cfg.SetupDone,
+			"needsSetup": !setupDone,
 		})
 	}
 }
@@ -641,6 +669,22 @@ func handleSetupSave(cfg *Config, tunnelMgr *TunnelManager) http.HandlerFunc {
 		cfg.Proxy = req.Proxy
 		cfg.BlocklistURL = req.BlocklistURL
 		cfg.SetupDone = true
+
+		// Set public URL based on tunnel (still under lock)
+		switch cfg.Tunnel {
+		case "cloudflared":
+			if cfg.CloudflaredHostname != "" {
+				cfg.PublicURL = "https://" + cfg.CloudflaredHostname
+			}
+		case "bore":
+			cfg.PublicURL = ""
+		default:
+			cfg.PublicURL = ""
+		}
+
+		// Copy values needed after unlock
+		tunnelType := cfg.Tunnel
+		cfgCopy := *cfg
 		cfg.mu.Unlock()
 
 		// Clear all sessions — config (possibly password) changed
@@ -648,30 +692,18 @@ func handleSetupSave(cfg *Config, tunnelMgr *TunnelManager) http.HandlerFunc {
 			clearSessionsFunc()
 		}
 
-		// Set public URL based on tunnel
-		switch cfg.Tunnel {
-		case "cloudflared":
-			if cfg.CloudflaredHostname != "" {
-				cfg.PublicURL = "https://" + cfg.CloudflaredHostname
-			}
-		case "bore":
-			cfg.PublicURL = "" // set dynamically when bore starts
-		default:
-			cfg.PublicURL = ""
-		}
-
 		// Save to disk
-		if err := saveConfig(cfg); err != nil {
+		if err := saveConfig(&cfgCopy); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 
-		slog.Info("setup saved", "tunnel", cfg.Tunnel)
+		slog.Info("setup saved", "tunnel", tunnelType)
 
 		// Start tunnel if configured
-		if cfg.Tunnel != "" && cfg.Tunnel != "none" {
+		if tunnelType != "" && tunnelType != "none" {
 			tunnelMgr.Stop()
-			tunnelMgr.cfg = *cfg
+			tunnelMgr.cfg = cfgCopy
 			if err := tunnelMgr.Start(); err != nil {
 				slog.Warn("tunnel start failed after setup", "error", err)
 			}
@@ -697,12 +729,17 @@ func handleCreateShare(cfg *Config, mgr *ShareManager, tunnelMgr *TunnelManager)
 			req.Type = "local"
 		}
 
+		cfg.mu.RLock()
+		cfgPort := cfg.Port
+		cfgPublicURL := cfg.PublicURL
+		cfg.mu.RUnlock()
+
 		var baseURL string
 		switch req.Type {
 		case "local":
-			baseURL = fmt.Sprintf("http://localhost:%d", cfg.Port)
+			baseURL = fmt.Sprintf("http://localhost:%d", cfgPort)
 		case "public":
-			baseURL = cfg.PublicURL
+			baseURL = cfgPublicURL
 			if _, tURL, _ := tunnelMgr.Status(); tURL != "" {
 				baseURL = tURL
 			}
@@ -839,7 +876,7 @@ func handleStatus(cfg *Config, client *aria2.Client, tunnelMgr *TunnelManager) h
 		// Tunnel
 		tStatus, tURL, tErr := tunnelMgr.Status()
 		status["tunnel"] = map[string]interface{}{
-			"type":   cfg.Tunnel,
+			"type":   tunnel,
 			"status": tStatus,
 			"url":    tURL,
 			"error":  tErr,
