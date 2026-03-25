@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DownBox</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body x-data="downbox()" x-init="init()">
+
+    <!-- ==================== SETUP WIZARD ==================== -->
+    <div x-show="needsSetup" x-cloak class="wizard-overlay">
+        <div class="wizard">
+            <div class="wizard-logo">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <span>DownBox Setup</span>
+            </div>
+
+            <!-- Step indicators -->
+            <div class="wizard-steps">
+                <div class="step-dot" :class="wizardStep >= 1 && 'active'">1</div>
+                <div class="step-line" :class="wizardStep >= 2 && 'active'"></div>
+                <div class="step-dot" :class="wizardStep >= 2 && 'active'">2</div>
+                <div class="step-line" :class="wizardStep >= 3 && 'active'"></div>
+                <div class="step-dot" :class="wizardStep >= 3 && 'active'">3</div>
+            </div>
+
+            <!-- Step 1: Tunnel -->
+            <div x-show="wizardStep === 1">
+                <h2>Remote access</h2>
+                <p class="wizard-desc">How do you want to access DownBox from outside your network?</p>
+
+                <div class="tunnel-cards">
+                    <div class="tunnel-card" :class="wizardData.tunnel === 'cloudflared' && 'selected'" @click="wizardData.tunnel = 'cloudflared'">
+                        <div class="tc-header">
+                            <strong>Cloudflare Tunnel</strong>
+                            <span class="tc-tag" x-show="wizardTools.cloudflared">installed</span>
+                            <span class="tc-tag tc-missing" x-show="!wizardTools.cloudflared">not installed</span>
+                        </div>
+                        <p>Persistent HTTPS URL via your Cloudflare account. Free.</p>
+                    </div>
+
+                    <div class="tunnel-card" :class="wizardData.tunnel === 'bore' && 'selected'" @click="wizardData.tunnel = 'bore'">
+                        <div class="tc-header">
+                            <strong>Bore</strong>
+                            <span class="tc-tag" x-show="wizardTools.bore">installed</span>
+                            <span class="tc-tag tc-missing" x-show="!wizardTools.bore">not installed</span>
+                        </div>
+                        <p>Random public URL, no signup needed. Free &amp; simple.</p>
+                    </div>
+
+                    <div class="tunnel-card" :class="wizardData.tunnel === 'none' && 'selected'" @click="wizardData.tunnel = 'none'">
+                        <div class="tc-header"><strong>Local only</strong></div>
+                        <p>Access only from your local network. No tunnel.</p>
+                    </div>
+                </div>
+
+                <!-- Cloudflared config -->
+                <div x-show="wizardData.tunnel === 'cloudflared'" class="tunnel-config" x-transition>
+                    <label>Tunnel Token
+                        <input type="text" x-model="wizardData.cloudflaredToken" placeholder="eyJ...">
+                        <small>From Cloudflare Zero Trust dashboard &rarr; Tunnels &rarr; Create &rarr; copy token</small>
+                    </label>
+                    <label>Hostname
+                        <input type="text" x-model="wizardData.cloudflaredHostname" placeholder="dl.example.com">
+                        <small>The subdomain you configured in your tunnel's public hostname</small>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Step 2: Settings -->
+            <div x-show="wizardStep === 2">
+                <h2>Settings</h2>
+                <p class="wizard-desc">Where should downloads go?</p>
+
+                <label>Download directory
+                    <input type="text" x-model="wizardData.downloadDir">
+                </label>
+                <label>Port
+                    <input type="number" x-model.number="wizardData.port" min="1" max="65535">
+                </label>
+            </div>
+
+            <!-- Step 3: Confirm -->
+            <div x-show="wizardStep === 3">
+                <h2>Ready to go</h2>
+
+                <div class="wizard-summary">
+                    <div class="ws-row">
+                        <span>Tunnel</span>
+                        <span x-text="wizardData.tunnel === 'none' ? 'Local only' : wizardData.tunnel"></span>
+                    </div>
+                    <div class="ws-row" x-show="wizardData.tunnel === 'cloudflared'">
+                        <span>Hostname</span>
+                        <span x-text="wizardData.cloudflaredHostname"></span>
+                    </div>
+                    <div class="ws-row">
+                        <span>Downloads</span>
+                        <span x-text="wizardData.downloadDir"></span>
+                    </div>
+                    <div class="ws-row">
+                        <span>Port</span>
+                        <span x-text="wizardData.port"></span>
+                    </div>
+                </div>
+
+                <div x-show="wizardError" class="alert alert-err" x-text="wizardError"></div>
+            </div>
+
+            <!-- Navigation -->
+            <div class="wizard-nav">
+                <button class="btn btn-ghost" x-show="wizardStep > 1" @click="wizardStep--">Back</button>
+                <div style="flex:1"></div>
+                <button class="btn btn-primary" x-show="wizardStep < 3" @click="wizardStep++">Next</button>
+                <button class="btn btn-primary" x-show="wizardStep === 3" @click="saveSetup()" :disabled="wizardSaving">
+                    <template x-if="wizardSaving"><span class="spinner-sm"></span></template>
+                    <span x-text="wizardSaving ? 'Saving...' : 'Save & Start'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" x-show="!needsSetup" x-cloak>
+        <div class="logo">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            <span>DownBox</span>
+        </div>
+
+        <nav class="nav">
+            <a href="#" :class="tab === 'downloads' && 'active'" @click.prevent="tab='downloads'">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Downloads
+                <span x-show="downloads.length" class="count" x-text="downloads.length"></span>
+            </a>
+            <a href="#" :class="tab === 'files' && 'active'" @click.prevent="tab='files'; fetchFiles()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                </svg>
+                Files
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="status-dot" :class="status?.aria2?.online ? 'online' : 'offline'"></div>
+            <span x-text="status?.aria2?.online ? 'aria2 connected' : 'aria2 offline'"></span>
+        </div>
+        <div class="sidebar-footer" x-show="status?.disk">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+            </svg>
+            <span x-text="formatSize(status?.disk?.free || 0) + ' free'"></span>
+        </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="content" x-show="!needsSetup" x-cloak>
+
+        <!-- ==================== DOWNLOADS ==================== -->
+        <section x-show="tab === 'downloads'" x-cloak>
+            <div class="page-header">
+                <h1>Downloads</h1>
+            </div>
+
+            <!-- Add URL bar -->
+            <form @submit.prevent="addDownload()" class="url-bar">
+                <div class="url-input-wrap">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                    </svg>
+                    <input type="text" x-model="newURL" placeholder="Paste a URL or magnet link...">
+                </div>
+                <button type="submit" class="btn btn-primary" :disabled="!newURL.trim()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                    Add
+                </button>
+                <label class="btn btn-ghost">
+                    <input type="file" accept=".torrent" @change="uploadTorrent($event)" hidden>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                    .torrent
+                </label>
+            </form>
+
+            <!-- Offline notice -->
+            <div x-show="!aria2Online" class="alert alert-warn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                aria2 is not running
+            </div>
+
+            <!-- Empty state -->
+            <div x-show="downloads.length === 0 && aria2Online" class="empty-state">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <p>No downloads yet</p>
+                <p class="sub">Paste a URL above to get started</p>
+            </div>
+
+            <!-- Download list -->
+            <div class="dl-list">
+                <template x-for="dl in downloads" :key="dl.gid">
+                    <div class="card dl-card">
+                        <div class="dl-top">
+                            <div class="dl-info">
+                                <span class="dl-name" x-text="dlName(dl)" :title="dlName(dl)"></span>
+                                <span class="dl-meta">
+                                    <span x-text="formatSize(parseInt(dl.completedLength||0))"></span>
+                                    <span x-show="parseInt(dl.totalLength||0) > 0"> / <span x-text="formatSize(parseInt(dl.totalLength||0))"></span></span>
+                                    <span x-show="dl.status==='active'" class="dl-speed" x-text="formatSize(parseInt(dl.downloadSpeed||0)) + '/s'"></span>
+                                </span>
+                            </div>
+                            <div class="dl-right">
+                                <span class="badge" :class="'badge-' + dl.status" x-text="dl.status"></span>
+                            </div>
+                        </div>
+                        <div class="progress-wrap">
+                            <div class="progress-bar">
+                                <div class="progress-fill" :class="'fill-' + dl.status" :style="'width:' + dlProgress(dl) + '%'"></div>
+                            </div>
+                            <span class="progress-pct" x-text="dlProgress(dl) + '%'"></span>
+                        </div>
+                        <div class="dl-actions">
+                            <button class="btn btn-sm btn-ghost" x-show="dl.status==='active'" @click="pauseDownload(dl.gid)" title="Pause">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                            </button>
+                            <button class="btn btn-sm btn-ghost" x-show="dl.status==='paused'" @click="resumeDownload(dl.gid)" title="Resume">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            </button>
+                            <button class="btn btn-sm btn-danger" @click="removeDownload(dl.gid)" title="Remove">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </section>
+
+        <!-- ==================== FILES ==================== -->
+        <section x-show="tab === 'files'" x-cloak>
+            <div class="page-header">
+                <h1>Files</h1>
+            </div>
+
+            <!-- Breadcrumbs -->
+            <div class="breadcrumbs">
+                <a href="#" @click.prevent="browseTo('')" class="crumb">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                    </svg>
+                </a>
+                <template x-for="(crumb, i) in breadcrumbs" :key="i">
+                    <span class="crumb-item">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                        <a href="#" @click.prevent="browseTo(crumb.path)" class="crumb" x-text="crumb.name"></a>
+                    </span>
+                </template>
+            </div>
+
+            <!-- Empty dir -->
+            <div x-show="fileList.length === 0" class="empty-state">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                </svg>
+                <p>Empty directory</p>
+            </div>
+
+            <!-- File grid -->
+            <div x-show="fileList.length > 0" class="file-grid">
+                <template x-for="f in fileList" :key="f.path">
+                    <div class="card file-card" @contextmenu.prevent="openCtx($event, f)">
+                        <!-- Directory -->
+                        <template x-if="f.isDir">
+                            <a href="#" @click.prevent="browseTo(f.path)" class="file-link">
+                                <div class="file-icon folder-icon">
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                                    </svg>
+                                </div>
+                                <span class="file-name" x-text="f.name"></span>
+                                <span class="file-meta" x-text="formatDate(f.modTime)"></span>
+                            </a>
+                        </template>
+                        <!-- File -->
+                        <template x-if="!f.isDir">
+                            <div class="file-link">
+                                <div class="file-icon" :class="'icon-' + f.type">
+                                    <span x-text="typeIcon(f.type)" style="font-size:1.6rem"></span>
+                                </div>
+                                <span class="file-name" x-text="f.name"></span>
+                                <span class="file-meta">
+                                    <span x-text="formatSize(f.size)"></span> &middot; <span x-text="formatDate(f.modTime)"></span>
+                                </span>
+                                <div class="file-actions">
+                                    <a :href="'/api/files/download?path=' + encodeURIComponent(f.path)" class="btn btn-xs btn-ghost" title="Download">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                                        </svg>
+                                    </a>
+                                    <button class="btn btn-xs btn-ghost" @click="previewFile(f)" title="Preview"
+                                            x-show="['image','video','audio'].includes(f.type)">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                                        </svg>
+                                    </button>
+                                    <button class="btn btn-xs btn-ghost" @click="shareLink(f)" title="Copy share link">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                                        </svg>
+                                    </button>
+                                    <button class="btn btn-xs btn-danger" @click="deleteFile(f)" title="Delete">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                                            <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V3h6v3"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Toast notification -->
+    <div class="toast" x-show="toastVisible" x-transition.opacity x-cloak x-text="toastMsg"></div>
+
+    <!-- Preview Modal -->
+    <div x-show="showPreview" x-cloak class="modal-overlay" @click.self="showPreview=false" x-transition.opacity>
+        <div class="modal" x-transition.scale.90>
+            <div class="modal-header">
+                <span x-text="previewName"></span>
+                <button class="btn btn-xs btn-ghost" @click="showPreview=false">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <img x-show="previewType==='image'" :src="previewSrc" alt="">
+                <video x-show="previewType==='video'" :src="previewSrc" controls autoplay></video>
+                <audio x-show="previewType==='audio'" :src="previewSrc" controls autoplay></audio>
+            </div>
+        </div>
+    </div>
+
+    <script src="/vendor/alpine.min.js" defer></script>
+    <script src="/app.js"></script>
+</body>
+</html>
