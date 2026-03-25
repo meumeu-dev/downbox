@@ -3,9 +3,11 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"syscall"
 	"time"
@@ -15,7 +17,7 @@ import (
 )
 
 // NewServer creates and configures the HTTP mux with all routes.
-func NewServer(cfg *Config, aria2Client *aria2.Client, fileHandler *files.Handler, tunnelMgr *TunnelManager, webFS http.FileSystem) http.Handler {
+func NewServer(cfg *Config, aria2Client *aria2.Client, fileHandler *files.Handler, tunnelMgr *TunnelManager, shareMgr *ShareManager, webFS http.FileSystem) http.Handler {
 	mux := http.NewServeMux()
 
 	// --- Downloads (aria2 proxy) ---
@@ -36,6 +38,13 @@ func NewServer(cfg *Config, aria2Client *aria2.Client, fileHandler *files.Handle
 	mux.HandleFunc("GET /api/setup/status", handleSetupStatus(cfg))
 	mux.HandleFunc("GET /api/setup/defaults", handleSetupDefaults())
 	mux.HandleFunc("POST /api/setup/save", handleSetupSave(cfg, tunnelMgr))
+
+	// --- Shares ---
+	mux.HandleFunc("POST /api/shares", handleCreateShare(cfg, shareMgr, tunnelMgr))
+	mux.HandleFunc("GET /api/shares", handleListShares(shareMgr))
+	mux.HandleFunc("GET /api/shares/file", handleFileShares(shareMgr))
+	mux.HandleFunc("DELETE /api/shares/{token}", handleDeleteShare(shareMgr))
+	mux.HandleFunc("GET /s/{token}", shareMgr.ServeShare)
 
 	// --- System ---
 	mux.HandleFunc("GET /api/status", handleStatus(cfg, aria2Client, tunnelMgr))
@@ -285,12 +294,94 @@ func handleSetupSave(cfg *Config, tunnelMgr *TunnelManager) http.HandlerFunc {
 	}
 }
 
+// --- Share handlers ---
+
+func handleCreateShare(cfg *Config, mgr *ShareManager, tunnelMgr *TunnelManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Path string `json:"path"`
+			Type string `json:"type"` // "local" or "public"
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+		if req.Type == "" {
+			req.Type = "local"
+		}
+
+		var baseURL string
+		switch req.Type {
+		case "local":
+			baseURL = fmt.Sprintf("http://localhost:%d", cfg.Port)
+		case "public":
+			baseURL = cfg.PublicURL
+			if _, tURL, _ := tunnelMgr.Status(); tURL != "" {
+				baseURL = tURL
+			}
+			if baseURL == "" {
+				writeError(w, http.StatusBadRequest, "no tunnel configured")
+				return
+			}
+		default:
+			writeError(w, http.StatusBadRequest, "type must be local or public")
+			return
+		}
+
+		share, err := mgr.Create(req.Path, req.Type, baseURL)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, share)
+	}
+}
+
+func handleListShares(mgr *ShareManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, mgr.List())
+	}
+}
+
+func handleFileShares(mgr *ShareManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Query().Get("path")
+		writeJSON(w, http.StatusOK, mgr.FindByPath(path))
+	}
+}
+
+func handleDeleteShare(mgr *ShareManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := r.PathValue("token")
+		if mgr.Delete(token) {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+		} else {
+			writeError(w, http.StatusNotFound, "share not found")
+		}
+	}
+}
+
 // --- System handler ---
 
 func handleStatus(cfg *Config, client *aria2.Client, tunnelMgr *TunnelManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Convert downloadDir back to ~ form for display
+		dlDir := cfg.DownloadDir
+		if home, err := os.UserHomeDir(); err == nil {
+			if strings.HasPrefix(dlDir, home) {
+				dlDir = "~" + dlDir[len(home):]
+			}
+		}
+
 		status := map[string]interface{}{
 			"publicURL": cfg.PublicURL,
+			"config": map[string]interface{}{
+				"port":                cfg.Port,
+				"downloadDir":         dlDir,
+				"tunnel":              cfg.Tunnel,
+				"cloudflaredToken":    cfg.CloudflaredToken,
+				"cloudflaredHostname": cfg.CloudflaredHostname,
+			},
 		}
 
 		// Disk info

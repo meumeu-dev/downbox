@@ -8,6 +8,11 @@ function downbox() {
         wizardSaving: false,
         wizardError: '',
 
+        // Settings
+        settingsData: { tunnel: 'none', cloudflaredToken: '', cloudflaredHostname: '', port: 8080, downloadDir: '~/Downloads' },
+        settingsSaving: false,
+        settingsSaved: false,
+
         // App
         tab: 'downloads',
         downloads: [],
@@ -75,6 +80,7 @@ function downbox() {
             this.fetchStatus();
             this.fetchDownloads();
             this.fetchFiles();
+            this.fetchShares();
             setInterval(() => this.fetchDownloads(), 2000);
             setInterval(() => this.fetchStatus(), 10000);
         },
@@ -165,11 +171,71 @@ function downbox() {
             this.showPreview = true;
         },
 
-        shareLink(f) {
-            const base = this.publicURL || window.location.origin;
-            const link = base + '/api/files/download?path=' + encodeURIComponent(f.path);
+        // --- Shares ---
+
+        async getFileShares(path) {
+            try {
+                const r = await fetch('/api/shares/file?path=' + encodeURIComponent(path));
+                return await r.json() || [];
+            } catch { return []; }
+        },
+
+        async createShare(path, type) {
+            try {
+                const r = await fetch('/api/shares', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path, type })
+                });
+                const data = await r.json();
+                if (data.error) { this.toast(data.error); return null; }
+                return data;
+            } catch { return null; }
+        },
+
+        async stopShare(token) {
+            await fetch(`/api/shares/${token}`, { method: 'DELETE' });
+            this.toast('Share stopped');
+        },
+
+        copyLink(link) {
             navigator.clipboard.writeText(link);
             this.toast('Link copied!');
+        },
+
+        // --- Settings ---
+
+        async loadSettings() {
+            try {
+                const r = await fetch('/api/status');
+                const s = await r.json();
+                this.settingsData = {
+                    port: s.config?.port || 8080,
+                    downloadDir: s.config?.downloadDir || '~/Downloads',
+                    tunnel: s.config?.tunnel || 'none',
+                    cloudflaredToken: s.config?.cloudflaredToken || '',
+                    cloudflaredHostname: s.config?.cloudflaredHostname || '',
+                };
+            } catch {}
+        },
+
+        async saveSettings() {
+            this.settingsSaving = true;
+            this.settingsSaved = false;
+            try {
+                const r = await fetch('/api/setup/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.settingsData)
+                });
+                const d = await r.json();
+                if (d.ok) {
+                    this.settingsSaved = true;
+                    this.fetchStatus();
+                    setTimeout(() => { this.settingsSaved = false; }, 3000);
+                }
+            } catch {}
+            this.settingsSaving = false;
         },
 
         // --- System ---

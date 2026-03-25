@@ -446,7 +446,8 @@ func runServer(args []string) {
 	defer tunnelMgr.Stop()
 
 	// HTTP server
-	mux := NewServer(&cfg, aria2Client, fileHandler, tunnelMgr, webFileSystem)
+	shareMgr := NewShareManager(cfg.DownloadDir)
+	mux := NewServer(&cfg, aria2Client, fileHandler, tunnelMgr, shareMgr, webFileSystem)
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
 		Handler:      mux,

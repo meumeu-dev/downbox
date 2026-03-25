@@ -154,6 +154,13 @@
                 </svg>
                 Files
             </a>
+            <a href="#" :class="tab === 'settings' && 'active'" @click.prevent="tab='settings'; loadSettings()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+                Settings
+            </a>
         </nav>
 
         <div class="sidebar-footer">
@@ -333,12 +340,61 @@
                                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                                         </svg>
                                     </button>
-                                    <button class="btn btn-xs btn-ghost" @click="shareLink(f)" title="Copy share link">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-                                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-                                        </svg>
-                                    </button>
+                                    <div class="share-pop" x-data="{open: false, shares: [], loading: ''}">
+                                        <button class="btn btn-xs btn-ghost" @click="open=!open; if(open) shares=await getFileShares(f.path)" title="Share">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                                            </svg>
+                                        </button>
+                                        <div class="share-panel" x-show="open" @click.outside="open=false" x-transition>
+                                            <div class="sp-title">Share links</div>
+
+                                            <!-- Local share -->
+                                            <div class="sp-service">
+                                                <template x-if="shares.find(s => s.type === 'local')">
+                                                    <div class="sp-row">
+                                                        <span class="sp-label">Local</span>
+                                                        <code class="sp-url" x-text="shares.find(s => s.type === 'local').url"></code>
+                                                        <button class="sp-copy" @click="copyLink(shares.find(s => s.type === 'local').url)">Copy</button>
+                                                        <button class="sp-stop" @click="await stopShare(shares.find(s => s.type === 'local').token); shares=shares.filter(s => s.type !== 'local')" title="Stop">
+                                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                                        </button>
+                                                    </div>
+                                                </template>
+                                                <template x-if="!shares.find(s => s.type === 'local')">
+                                                    <div class="sp-row">
+                                                        <span class="sp-label">Local</span>
+                                                        <button class="sp-create" @click="loading='local'; let s=await createShare(f.path,'local'); if(s) shares.push(s); loading=''" :disabled="loading==='local'">
+                                                            <span x-text="loading==='local' ? '...' : '+ Create'"></span>
+                                                        </button>
+                                                    </div>
+                                                </template>
+                                            </div>
+
+                                            <!-- Public share -->
+                                            <div class="sp-service" x-show="publicURL || status?.tunnel?.url">
+                                                <template x-if="shares.find(s => s.type === 'public')">
+                                                    <div class="sp-row">
+                                                        <span class="sp-label">Public</span>
+                                                        <code class="sp-url" x-text="shares.find(s => s.type === 'public').url"></code>
+                                                        <button class="sp-copy" @click="copyLink(shares.find(s => s.type === 'public').url)">Copy</button>
+                                                        <button class="sp-stop" @click="await stopShare(shares.find(s => s.type === 'public').token); shares=shares.filter(s => s.type !== 'public')" title="Stop">
+                                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                                        </button>
+                                                    </div>
+                                                </template>
+                                                <template x-if="!shares.find(s => s.type === 'public')">
+                                                    <div class="sp-row">
+                                                        <span class="sp-label">Public</span>
+                                                        <button class="sp-create" @click="loading='public'; let s=await createShare(f.path,'public'); if(s) shares.push(s); loading=''" :disabled="loading==='public'">
+                                                            <span x-text="loading==='public' ? '...' : '+ Create'"></span>
+                                                        </button>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </div>
                                     <button class="btn btn-xs btn-danger" @click="deleteFile(f)" title="Delete">
                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
@@ -350,6 +406,59 @@
                         </template>
                     </div>
                 </template>
+            </div>
+        </section>
+
+        <!-- ==================== SETTINGS ==================== -->
+        <section x-show="tab === 'settings'" x-cloak>
+            <div class="page-header">
+                <h1>Settings</h1>
+            </div>
+
+            <div class="settings-grid">
+                <div class="card settings-card">
+                    <h3>General</h3>
+                    <label>Download directory
+                        <input type="text" x-model="settingsData.downloadDir">
+                    </label>
+                    <label>Port
+                        <input type="number" x-model.number="settingsData.port" min="1" max="65535">
+                    </label>
+                </div>
+
+                <div class="card settings-card">
+                    <h3>Remote access</h3>
+                    <div class="settings-tunnel-select">
+                        <button class="btn btn-sm" :class="settingsData.tunnel === 'none' ? 'btn-primary' : 'btn-ghost'" @click="settingsData.tunnel = 'none'">None</button>
+                        <button class="btn btn-sm" :class="settingsData.tunnel === 'cloudflared' ? 'btn-primary' : 'btn-ghost'" @click="settingsData.tunnel = 'cloudflared'">Cloudflare</button>
+                        <button class="btn btn-sm" :class="settingsData.tunnel === 'bore' ? 'btn-primary' : 'btn-ghost'" @click="settingsData.tunnel = 'bore'">Bore</button>
+                    </div>
+                    <div x-show="settingsData.tunnel === 'cloudflared'" x-transition>
+                        <label>Tunnel Token
+                            <input type="text" x-model="settingsData.cloudflaredToken" placeholder="eyJ...">
+                        </label>
+                        <label>Hostname
+                            <input type="text" x-model="settingsData.cloudflaredHostname" placeholder="dl.example.com">
+                        </label>
+                    </div>
+                    <div x-show="settingsData.tunnel === 'bore'" class="settings-note">
+                        Bore generates a random public URL automatically. No configuration needed.
+                    </div>
+
+                    <!-- Tunnel status -->
+                    <div x-show="status?.tunnel" class="tunnel-status">
+                        <span class="ts-label">Status:</span>
+                        <span class="badge" :class="'badge-' + (status?.tunnel?.status || 'stopped')" x-text="status?.tunnel?.status || 'stopped'"></span>
+                        <span x-show="status?.tunnel?.url" class="ts-url" x-text="status?.tunnel?.url"></span>
+                    </div>
+                </div>
+
+                <div class="settings-actions">
+                    <button class="btn btn-primary" @click="saveSettings()" :disabled="settingsSaving">
+                        <span x-text="settingsSaving ? 'Saving...' : 'Save'"></span>
+                    </button>
+                    <span x-show="settingsSaved" class="settings-saved" x-transition>Saved!</span>
+                </div>
             </div>
         </section>
 

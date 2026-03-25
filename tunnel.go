@@ -176,7 +176,13 @@ func (tm *TunnelManager) startBore() error {
 	tm.cancel = cancel
 	tm.mu.Unlock()
 
-	cmd := exec.CommandContext(ctx, "bore", "local", fmt.Sprintf("%d", tm.cfg.Port), "--to", "bore.pub")
+	port := tm.cfg.Port
+	if port == 0 {
+		port = 8080
+	}
+	slog.Info("starting bore", "port", port)
+
+	cmd := exec.CommandContext(ctx, "bore", "local", fmt.Sprintf("%d", port), "--to", "bore.pub")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGTERM}
 
 	stderr, err := cmd.StderrPipe()
@@ -184,6 +190,8 @@ func (tm *TunnelManager) startBore() error {
 		cancel()
 		return err
 	}
+	stdout, _ := cmd.StdoutPipe()
+
 	if err := cmd.Start(); err != nil {
 		cancel()
 		return fmt.Errorf("start bore: %w", err)
@@ -193,16 +201,25 @@ func (tm *TunnelManager) startBore() error {
 	tm.cmd = cmd
 	tm.mu.Unlock()
 
+	parseLine := func(line string) {
+		slog.Debug("bore", "line", line)
+		if match := boreURLRegex.FindStringSubmatch(line); len(match) > 0 {
+			url := fmt.Sprintf("http://bore.pub:%s", match[1])
+			tm.setRunning(url)
+			slog.Info("bore tunnel running", "url", url)
+		}
+	}
+
 	go func() {
 		scanner := bufio.NewScanner(stderr)
 		for scanner.Scan() {
-			line := scanner.Text()
-			slog.Debug("bore", "line", line)
-			if match := boreURLRegex.FindStringSubmatch(line); len(match) > 0 {
-				url := fmt.Sprintf("http://bore.pub:%s", match[1])
-				tm.setRunning(url)
-				slog.Info("bore tunnel running", "url", url)
-			}
+			parseLine(scanner.Text())
+		}
+	}()
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			parseLine(scanner.Text())
 		}
 	}()
 
