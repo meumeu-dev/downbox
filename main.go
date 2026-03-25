@@ -20,6 +20,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"github.com/freelux/downbox/aria2"
 	"github.com/freelux/downbox/files"
@@ -30,7 +31,24 @@ var webFS embed.FS
 
 var version = "dev"
 
-const pidFile = "/tmp/downbox.pid"
+// pidDir returns ~/.config/downbox, creating it if needed.
+func pidDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "/tmp"
+	}
+	dir := filepath.Join(home, ".config", "downbox")
+	os.MkdirAll(dir, 0o700)
+	return dir
+}
+
+func pidFilePath() string {
+	return filepath.Join(pidDir(), "downbox.pid")
+}
+
+func portFilePath() string {
+	return filepath.Join(pidDir(), "downbox.port")
+}
 
 type Config struct {
 	Port                int
@@ -116,8 +134,15 @@ func cmdUpdate() {
 	// Get latest version from GitHub
 	url := fmt.Sprintf("https://github.com/meumeu-dev/downbox/releases/latest/download/downbox-%s", arch)
 
-	// Download to temp
-	tmpFile := "/tmp/downbox-update"
+	// Download to temp (mktemp to avoid TOCTOU)
+	tmpF, err := os.CreateTemp("", "downbox-update-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Cannot create temp file: %v\n", err)
+		os.Exit(1)
+	}
+	tmpFile := tmpF.Name()
+	tmpF.Close()
+	defer os.Remove(tmpFile) // cleanup on any exit path
 	cmd := exec.Command("curl", "-fSL", "--progress-bar", url, "-o", tmpFile)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -323,7 +348,7 @@ func cmdStop() {
 	for i := 0; i < 50; i++ {
 		time.Sleep(100 * time.Millisecond)
 		if err := syscall.Kill(pid, 0); err != nil {
-			os.Remove(pidFile)
+			os.Remove(pidFilePath())
 			fmt.Println("DownBox stopped")
 			return
 		}
@@ -332,7 +357,7 @@ func cmdStop() {
 	// Force kill
 	fmt.Println("Force killing...")
 	syscall.Kill(-pid, syscall.SIGKILL)
-	os.Remove(pidFile)
+	os.Remove(pidFilePath())
 	fmt.Println("DownBox killed")
 }
 
@@ -389,15 +414,15 @@ func cmdStatus() {
 // --- PID file management ---
 
 func writePid() {
-	os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0o644)
+	os.WriteFile(pidFilePath(), []byte(strconv.Itoa(os.Getpid())), 0o644)
 }
 
 func writePort(port int) {
-	os.WriteFile("/tmp/downbox.port", []byte(strconv.Itoa(port)), 0o644)
+	os.WriteFile(portFilePath(), []byte(strconv.Itoa(port)), 0o644)
 }
 
 func readPid() (int, bool) {
-	data, err := os.ReadFile(pidFile)
+	data, err := os.ReadFile(pidFilePath())
 	if err != nil {
 		return 0, false
 	}
@@ -407,14 +432,14 @@ func readPid() (int, bool) {
 	}
 	// Check if process is actually running
 	if err := syscall.Kill(pid, 0); err != nil {
-		os.Remove(pidFile)
+		os.Remove(pidFilePath())
 		return 0, false
 	}
 	return pid, true
 }
 
 func readPort() int {
-	data, err := os.ReadFile("/tmp/downbox.port")
+	data, err := os.ReadFile(portFilePath())
 	if err != nil {
 		return 8080
 	}
@@ -426,8 +451,8 @@ func readPort() int {
 }
 
 func cleanupPid() {
-	os.Remove(pidFile)
-	os.Remove("/tmp/downbox.port")
+	os.Remove(pidFilePath())
+	os.Remove(portFilePath())
 }
 
 // --- Server (foreground or daemon) ---
@@ -496,12 +521,23 @@ func runServer(args []string) {
 	}
 
 	// Auto-generate password if not set
+	firstGeneration := false
 	if cfg.Password == "" {
 		b := make([]byte, 12)
 		rand.Read(b)
 		cfg.Password = hex.EncodeToString(b)
+		firstGeneration = true
 		slog.Info("no password configured, one has been generated")
-		// Save it to config so it persists across restarts
+	}
+
+	// Auto-complete setup on first start so the wizard is never exposed without auth
+	if !cfg.SetupDone {
+		cfg.SetupDone = true
+		firstGeneration = true
+	}
+
+	// Save config if anything was generated
+	if firstGeneration {
 		saveConfig(&cfg)
 	}
 
@@ -572,8 +608,14 @@ func runServer(args []string) {
 	// HTTP server
 	shareMgr := NewShareManager(cfg.DownloadDir)
 	mux := NewServer(&cfg, aria2Client, fileHandler, tunnelMgr, shareMgr, webFileSystem)
+	// Bind to localhost by default — Docker/LAN users can set DOWNBOX_BIND=0.0.0.0
+	bindHost := "127.0.0.1"
+	if env := os.Getenv("DOWNBOX_BIND"); env != "" {
+		bindHost = env
+	}
+	bindAddr := fmt.Sprintf("%s:%d", bindHost, cfg.Port)
 	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", cfg.Port),
+		Addr:         bindAddr,
 		Handler:      mux,
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
@@ -591,12 +633,14 @@ func runServer(args []string) {
 	}()
 
 	fmt.Printf("\n  DownBox ready → http://localhost:%d\n", cfg.Port)
-	fmt.Printf("  Password:      %s\n", cfg.Password)
+	// Only print password on first generation, and only to stderr on an interactive terminal
+	if firstGeneration {
+		if isTerminal(os.Stderr) {
+			fmt.Fprintf(os.Stderr, "  Password:      %s\n", cfg.Password)
+		}
+	}
 	if cfg.PublicURL != "" {
 		fmt.Printf("  Public URL:    %s\n", cfg.PublicURL)
-	}
-	if !cfg.SetupDone {
-		fmt.Printf("  Open the URL above to run the setup wizard\n")
 	}
 	fmt.Printf("  Downloads dir: %s\n\n", cfg.DownloadDir)
 
@@ -750,4 +794,11 @@ func formatSize(bytes int64) string {
 
 func decodeJSON(resp *http.Response, v interface{}) error {
 	return json.NewDecoder(resp.Body).Decode(v)
+}
+
+// isTerminal checks if f is connected to a terminal (not redirected/piped).
+func isTerminal(f *os.File) bool {
+	var termios [256]byte // oversized buffer for struct termios
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), uintptr(0x5401), uintptr(unsafe.Pointer(&termios[0]))) // 0x5401 = TCGETS
+	return errno == 0
 }

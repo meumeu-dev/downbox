@@ -170,6 +170,13 @@ func (h *Handler) HandleDownload(w http.ResponseWriter, r *http.Request) {
 
 	inline := r.URL.Query().Get("inline") == "true"
 	if inline {
+		// Only allow inline display for safe media types (image, video, audio).
+		// Everything else gets application/octet-stream to prevent stored XSS
+		// (e.g. .html files rendered in the browser).
+		ft := fileType(info.Name())
+		if ft != "image" && ft != "video" && ft != "audio" {
+			w.Header().Set("Content-Type", "application/octet-stream")
+		}
 		w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", info.Name()))
 	} else {
 		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", info.Name()))

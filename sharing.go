@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -53,14 +54,6 @@ func (sm *ShareManager) Create(filePath, shareType, baseURL string) (*Share, err
 		return nil, fmt.Errorf("path not allowed")
 	}
 
-	sm.mu.Lock()
-	// Limit shares to prevent memory exhaustion
-	if len(sm.shares) >= 1000 {
-		sm.mu.Unlock()
-		return nil, fmt.Errorf("maximum number of shares reached (1000)")
-	}
-	sm.mu.Unlock()
-
 	token := generateToken()
 	share := &Share{
 		Token:     token,
@@ -72,6 +65,11 @@ func (sm *ShareManager) Create(filePath, shareType, baseURL string) (*Share, err
 	}
 
 	sm.mu.Lock()
+	// Limit shares to prevent memory exhaustion — check and insert under same lock
+	if len(sm.shares) >= 1000 {
+		sm.mu.Unlock()
+		return nil, fmt.Errorf("maximum number of shares reached (1000)")
+	}
 	sm.shares[token] = share
 	sm.mu.Unlock()
 
@@ -137,12 +135,23 @@ func (sm *ShareManager) ServeShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	info, err := os.Stat(resolved)
+	// Open with O_NOFOLLOW to prevent symlink swap race between EvalSymlinks and open.
+	// Then serve via /proc/self/fd to ensure we serve the exact file we opened.
+	f, err := os.OpenFile(resolved, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil || info.IsDir() {
 		http.Error(w, "File not found", http.StatusNotFound)
 		return
 	}
 
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", info.Name()))
-	http.ServeFile(w, r, resolved)
+	// Serve from the opened fd via /proc/self/fd to avoid TOCTOU
+	fdPath := fmt.Sprintf("/proc/self/fd/%d", f.Fd())
+	http.ServeFile(w, r, fdPath)
 }

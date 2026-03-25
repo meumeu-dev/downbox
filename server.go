@@ -23,6 +23,10 @@ import (
 	"github.com/freelux/downbox/files"
 )
 
+// clearSessionsFunc is set by authMiddleware and called by setup/save to
+// invalidate all sessions when the password changes.
+var clearSessionsFunc func()
+
 // NewServer creates and configures the HTTP mux with all routes.
 func NewServer(cfg *Config, aria2Client *aria2.Client, fileHandler *files.Handler, tunnelMgr *TunnelManager, shareMgr *ShareManager, webFS http.FileSystem) http.Handler {
 	mux := http.NewServeMux()
@@ -82,10 +86,32 @@ func securityHeaders(next http.Handler) http.Handler {
 }
 
 func authMiddleware(cfg *Config, next http.Handler) http.Handler {
-	passHash := sha256.Sum256([]byte(cfg.Password))
+	var passHash [32]byte
+	var passMu sync.RWMutex
+	recomputeHash := func() {
+		passMu.Lock()
+		passHash = sha256.Sum256([]byte(cfg.Password))
+		passMu.Unlock()
+	}
+	recomputeHash()
+
+	getPassHash := func() [32]byte {
+		passMu.RLock()
+		defer passMu.RUnlock()
+		return passHash
+	}
 
 	// Session tokens: map[tokenHash] -> expiry
 	var sessions sync.Map
+
+	// Expose session-clearing function + password hash refresh
+	clearSessionsFunc = func() {
+		sessions.Range(func(key, _ interface{}) bool {
+			sessions.Delete(key)
+			return true
+		})
+		recomputeHash()
+	}
 
 	// Rate limiter for login: map[ip] -> lastAttempt
 	var loginAttempts sync.Map
@@ -97,11 +123,8 @@ func authMiddleware(cfg *Config, next http.Handler) http.Handler {
 			return
 		}
 
-		// Setup wizard endpoints — allow without auth when setup not done
-		if !cfg.SetupDone && (r.URL.Path == "/api/setup/status" || r.URL.Path == "/api/setup/defaults" || r.URL.Path == "/api/setup/save") {
-			next.ServeHTTP(w, r)
-			return
-		}
+		// Setup wizard endpoints now require auth like everything else
+		// (setup is auto-completed on first start, so there's no unauthenticated window)
 
 		// Check session cookie
 		if c, err := r.Cookie("downbox_session"); err == nil {
@@ -138,7 +161,8 @@ func authMiddleware(cfg *Config, next http.Handler) http.Handler {
 				return
 			}
 			h := sha256.Sum256([]byte(req.Password))
-			if subtle.ConstantTimeCompare(h[:], passHash[:]) == 1 {
+			currentHash := getPassHash()
+			if subtle.ConstantTimeCompare(h[:], currentHash[:]) == 1 {
 				// Generate random session token
 				tokenBytes := make([]byte, 32)
 				rand.Read(tokenBytes)
@@ -319,17 +343,58 @@ func filterAria2Options(opts map[string]string) map[string]string {
 	return safe
 }
 
+// pinResult holds the pinned URL and the original hostname for Host header
+type pinResult struct {
+	URL          string
+	OriginalHost string // non-empty only if hostname was replaced by IP
+}
+
+// pinHostToIP resolves the hostname in the URL to an IP and replaces it,
+// so aria2 connects to the exact same IP we validated (prevents DNS rebinding).
+// Returns the original hostname so the caller can set a Host header for CDN compat.
+func pinHostToIP(rawURL string) (pinResult, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return pinResult{URL: rawURL}, err
+	}
+	host := parsed.Hostname()
+	if host == "" {
+		return pinResult{URL: rawURL}, nil
+	}
+	// Already an IP literal — nothing to pin
+	if net.ParseIP(host) != nil {
+		return pinResult{URL: rawURL}, nil
+	}
+	ips, err := net.LookupHost(host)
+	if err != nil || len(ips) == 0 {
+		return pinResult{}, fmt.Errorf("cannot resolve host for pinning: %s", host)
+	}
+	ip := ips[0]
+	// Re-validate the resolved IP against SSRF rules
+	if isPrivateIP(net.ParseIP(ip)) {
+		return pinResult{}, fmt.Errorf("internal/private IPs are not allowed")
+	}
+	originalHost := host
+	// Replace hostname with IP, preserve port if any
+	if parsed.Port() != "" {
+		parsed.Host = net.JoinHostPort(ip, parsed.Port())
+	} else {
+		parsed.Host = ip
+	}
+	return pinResult{URL: parsed.String(), OriginalHost: originalHost}, nil
+}
+
 // resolveAndValidateURL follows redirects manually, validating each hop against SSRF
-func resolveAndValidateURL(rawURL string) (string, error) {
+func resolveAndValidateURL(rawURL string) (pinResult, error) {
 	// First validate the initial URL
 	if err := validateDownloadURL(rawURL); err != nil {
-		return "", err
+		return pinResult{}, err
 	}
 
 	lower := strings.ToLower(rawURL)
 	// Magnet/FTP — no redirects to follow
 	if strings.HasPrefix(lower, "magnet:") || strings.HasPrefix(lower, "ftp://") {
-		return rawURL, nil
+		return pinResult{URL: rawURL}, nil
 	}
 
 	// Follow redirects manually (max 10 hops)
@@ -344,42 +409,53 @@ func resolveAndValidateURL(rawURL string) (string, error) {
 	for i := 0; i < 10; i++ {
 		req, err := http.NewRequest("HEAD", currentURL, nil)
 		if err != nil {
-			return currentURL, nil // can't build request, let aria2 try
+			// Can't build request — still must pin to prevent DNS rebinding
+			return pinHostToIP(currentURL)
 		}
 		req.Header.Set("User-Agent", "DownBox/1.0")
 
 		resp, err := client.Do(req)
 		if err != nil {
-			return currentURL, nil // can't reach, let aria2 try
+			// Can't reach — still must pin to prevent DNS rebinding
+			return pinHostToIP(currentURL)
 		}
 		resp.Body.Close()
 
 		if resp.StatusCode < 300 || resp.StatusCode >= 400 {
-			return currentURL, nil // not a redirect, we're done
+			// Pin the final URL's hostname to a resolved IP to prevent DNS rebinding
+			pinned, err := pinHostToIP(currentURL)
+			if err != nil {
+				return pinResult{}, err
+			}
+			return pinned, nil
 		}
 
 		location := resp.Header.Get("Location")
 		if location == "" {
-			return currentURL, nil
+			pinned, err := pinHostToIP(currentURL)
+			if err != nil {
+				return pinResult{}, err
+			}
+			return pinned, nil
 		}
 
 		// Resolve relative redirects
 		base, _ := url.Parse(currentURL)
 		ref, err := url.Parse(location)
 		if err != nil {
-			return "", fmt.Errorf("invalid redirect URL")
+			return pinResult{}, fmt.Errorf("invalid redirect URL")
 		}
 		nextURL := base.ResolveReference(ref).String()
 
 		// Validate the redirect destination
 		if err := validateDownloadURL(nextURL); err != nil {
-			return "", fmt.Errorf("redirect blocked: %s", err.Error())
+			return pinResult{}, fmt.Errorf("redirect blocked: %s", err.Error())
 		}
 
 		currentURL = nextURL
 	}
 
-	return "", fmt.Errorf("too many redirects")
+	return pinResult{}, fmt.Errorf("too many redirects")
 }
 
 // --- Download handlers ---
@@ -443,16 +519,24 @@ func handleAddDownload(client *aria2.Client) http.HandlerFunc {
 			return
 		}
 
-		// Block dangerous URLs (SSRF) — validate initial + follow redirects
-		finalURL, err := resolveAndValidateURL(req.URL)
+		// Block dangerous URLs (SSRF) — validate initial + follow redirects + pin IP
+		pinned, err := resolveAndValidateURL(req.URL)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		req.URL = finalURL
+		req.URL = pinned.URL
 
 		// Whitelist safe aria2 options only
 		req.Options = filterAria2Options(req.Options)
+
+		// If hostname was pinned to IP, add Host header so CDNs still work
+		if pinned.OriginalHost != "" {
+			if req.Options == nil {
+				req.Options = make(map[string]string)
+			}
+			req.Options["header"] = "Host: " + pinned.OriginalHost
+		}
 
 		gid, err := client.AddURI([]string{req.URL}, req.Options)
 		if err != nil {
@@ -556,6 +640,11 @@ func handleSetupSave(cfg *Config, tunnelMgr *TunnelManager) http.HandlerFunc {
 		cfg.Proxy = req.Proxy
 		cfg.BlocklistURL = req.BlocklistURL
 		cfg.SetupDone = true
+
+		// Clear all sessions — config (possibly password) changed
+		if clearSessionsFunc != nil {
+			clearSessionsFunc()
+		}
 
 		// Set public URL based on tunnel
 		switch cfg.Tunnel {

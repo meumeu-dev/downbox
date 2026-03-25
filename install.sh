@@ -71,12 +71,15 @@ fi
 info "Downloading DownBox (linux/$ARCH)..."
 DOWNLOAD_URL="https://github.com/$REPO/releases/latest/download/downbox-$ARCH"
 
-if ! curl -fSL --progress-bar "$DOWNLOAD_URL" -o /tmp/downbox < /dev/null; then
+TMPFILE=$(mktemp /tmp/downbox.XXXXXXXXXX)
+trap 'rm -f "$TMPFILE"' EXIT
+
+if ! curl -fSL --progress-bar "$DOWNLOAD_URL" -o "$TMPFILE" < /dev/null; then
     err "Download failed. Check https://github.com/$REPO/releases"
 fi
 
-chmod +x /tmp/downbox
-$SUDO mv /tmp/downbox "$INSTALL_DIR/downbox"
+chmod +x "$TMPFILE"
+$SUDO mv "$TMPFILE" "$INSTALL_DIR/downbox"
 ok "DownBox installed to $INSTALL_DIR/downbox"
 
 # Optional: install bore

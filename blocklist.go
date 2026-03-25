@@ -45,6 +45,11 @@ func (bm *BlocklistManager) Start() error {
 		if u == "" {
 			continue
 		}
+		// Validate blocklist URL against SSRF before fetching
+		if err := validateDownloadURL(u); err != nil {
+			slog.Warn("blocklist URL blocked by SSRF validation", "url", u, "error", err)
+			continue
+		}
 		cacheFile := bm.cacheFile
 		if i > 0 {
 			cacheFile = fmt.Sprintf("%s.%d", bm.cacheFile, i)
@@ -261,6 +266,9 @@ func ipRangeToNets(startStr, endStr string) []*net.IPNet {
 
 // --- Built-in SOCKS5 filtering proxy ---
 
+// maxSOCKS5Conns limits concurrent SOCKS5 proxy connections to prevent FD exhaustion.
+const maxSOCKS5Conns = 500
+
 func (bm *BlocklistManager) startProxy() error {
 	addr := "127.0.0.1:0"
 	if bm.cfg.BlocklistPort > 0 {
@@ -278,13 +286,25 @@ func (bm *BlocklistManager) startProxy() error {
 
 	slog.Info("blocklist SOCKS5 proxy started", "addr", bm.proxyAddr, "rules", len(bm.networks))
 
+	// Semaphore to limit concurrent connections
+	connSem := make(chan struct{}, maxSOCKS5Conns)
+
 	go func() {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
 				return // listener closed
 			}
-			go bm.handleSOCKS5(conn)
+			select {
+			case connSem <- struct{}{}:
+				go func() {
+					defer func() { <-connSem }()
+					bm.handleSOCKS5(conn)
+				}()
+			default:
+				// At max connections, reject
+				conn.Close()
+			}
 		}
 	}()
 

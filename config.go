@@ -120,6 +120,12 @@ func loadConfig(cfg *Config, flagsSet map[string]bool) string {
 	return ""
 }
 
+// sanitizeConfigValue strips newlines and carriage returns to prevent config injection.
+func sanitizeConfigValue(s string) string {
+	r := strings.NewReplacer("\n", "", "\r", "")
+	return r.Replace(s)
+}
+
 // saveConfig writes the config to the default config path.
 func saveConfig(cfg *Config) error {
 	path := defaultConfigPath()
@@ -136,51 +142,53 @@ func saveConfig(cfg *Config) error {
 		}
 	}
 
+	s := sanitizeConfigValue // shorthand
+
 	var b strings.Builder
 	b.WriteString("# DownBox configuration\n\n")
 	b.WriteString(fmt.Sprintf("setup: %v\n\n", cfg.SetupDone))
 	b.WriteString(fmt.Sprintf("port: %d\n", cfg.Port))
-	b.WriteString(fmt.Sprintf("download-dir: %s\n", dlDir))
+	b.WriteString(fmt.Sprintf("download-dir: %s\n", s(dlDir)))
 	b.WriteString(fmt.Sprintf("aria2-port: %d\n", cfg.Aria2Port))
 	if cfg.Aria2Secret != "" {
-		b.WriteString(fmt.Sprintf("aria2-secret: %s\n", cfg.Aria2Secret))
+		b.WriteString(fmt.Sprintf("aria2-secret: %s\n", s(cfg.Aria2Secret)))
 	}
-	b.WriteString(fmt.Sprintf("\ntunnel: %s\n", cfg.Tunnel))
+	b.WriteString(fmt.Sprintf("\ntunnel: %s\n", s(cfg.Tunnel)))
 	if cfg.CloudflaredToken != "" {
-		b.WriteString(fmt.Sprintf("cloudflared-token: %s\n", cfg.CloudflaredToken))
+		b.WriteString(fmt.Sprintf("cloudflared-token: %s\n", s(cfg.CloudflaredToken)))
 	}
 	if cfg.CloudflaredHostname != "" {
-		b.WriteString(fmt.Sprintf("cloudflared-hostname: %s\n", cfg.CloudflaredHostname))
+		b.WriteString(fmt.Sprintf("cloudflared-hostname: %s\n", s(cfg.CloudflaredHostname)))
 	}
 	if cfg.BoreServer != "" {
-		b.WriteString(fmt.Sprintf("bore-server: %s\n", cfg.BoreServer))
+		b.WriteString(fmt.Sprintf("bore-server: %s\n", s(cfg.BoreServer)))
 	}
 	if cfg.BoreSecret != "" {
-		b.WriteString(fmt.Sprintf("bore-secret: %s\n", cfg.BoreSecret))
+		b.WriteString(fmt.Sprintf("bore-secret: %s\n", s(cfg.BoreSecret)))
 	}
 	if cfg.Password != "" {
-		b.WriteString(fmt.Sprintf("password: %s\n", cfg.Password))
+		b.WriteString(fmt.Sprintf("password: %s\n", s(cfg.Password)))
 	}
 	if cfg.DNSServers != "" {
-		b.WriteString(fmt.Sprintf("dns-servers: %s\n", cfg.DNSServers))
+		b.WriteString(fmt.Sprintf("dns-servers: %s\n", s(cfg.DNSServers)))
 	}
 	if cfg.Interface != "" {
-		b.WriteString(fmt.Sprintf("interface: %s\n", cfg.Interface))
+		b.WriteString(fmt.Sprintf("interface: %s\n", s(cfg.Interface)))
 	}
 	if cfg.ExcludeTrackers != "" {
-		b.WriteString(fmt.Sprintf("exclude-trackers: %s\n", cfg.ExcludeTrackers))
+		b.WriteString(fmt.Sprintf("exclude-trackers: %s\n", s(cfg.ExcludeTrackers)))
 	}
 	if cfg.Proxy != "" {
-		b.WriteString(fmt.Sprintf("proxy: %s\n", cfg.Proxy))
+		b.WriteString(fmt.Sprintf("proxy: %s\n", s(cfg.Proxy)))
 	}
 	if cfg.BlocklistURL != "" {
-		b.WriteString(fmt.Sprintf("blocklist-url: %s\n", cfg.BlocklistURL))
+		b.WriteString(fmt.Sprintf("blocklist-url: %s\n", s(cfg.BlocklistURL)))
 	}
 	if cfg.BlocklistPort > 0 {
 		b.WriteString(fmt.Sprintf("blocklist-port: %d\n", cfg.BlocklistPort))
 	}
 	if cfg.PublicURL != "" {
-		b.WriteString(fmt.Sprintf("public-url: %s\n", cfg.PublicURL))
+		b.WriteString(fmt.Sprintf("public-url: %s\n", s(cfg.PublicURL)))
 	}
 
 	return os.WriteFile(path, []byte(b.String()), 0o600)
