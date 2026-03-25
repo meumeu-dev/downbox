@@ -44,6 +44,7 @@ type Config struct {
 	CloudflaredHostname string
 	BoreServer          string
 	BoreSecret          string
+	Password            string
 	SetupDone           bool
 	Dev                 bool
 }

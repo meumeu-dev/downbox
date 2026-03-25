@@ -286,19 +286,14 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 
 	destPath := filepath.Join(targetDir, fileName)
 
-	// Avoid overwriting: add suffix if file exists
-	if _, err := os.Stat(destPath); err == nil {
-		ext := filepath.Ext(fileName)
-		base := strings.TrimSuffix(fileName, ext)
-		for i := 1; ; i++ {
-			destPath = filepath.Join(targetDir, fmt.Sprintf("%s_%d%s", base, i, ext))
-			if _, err := os.Stat(destPath); os.IsNotExist(err) {
-				break
-			}
-		}
+	// Avoid overwriting: use O_EXCL to prevent race conditions
+	ext := filepath.Ext(fileName)
+	base := strings.TrimSuffix(fileName, ext)
+	dst, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	for i := 1; os.IsExist(err); i++ {
+		destPath = filepath.Join(targetDir, fmt.Sprintf("%s_%d%s", base, i, ext))
+		dst, err = os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	}
-
-	dst, err := os.Create(destPath)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "create file: "+err.Error())
 		return

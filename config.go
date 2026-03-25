@@ -88,6 +88,9 @@ func loadConfig(cfg *Config, flagsSet map[string]bool) string {
 		if v, ok := values["bore-secret"]; ok {
 			cfg.BoreSecret = v
 		}
+		if v, ok := values["password"]; ok {
+			cfg.Password = v
+		}
 		if v, ok := values["setup"]; ok && v == "true" {
 			cfg.SetupDone = true
 		}
@@ -135,11 +138,14 @@ func saveConfig(cfg *Config) error {
 	if cfg.BoreSecret != "" {
 		b.WriteString(fmt.Sprintf("bore-secret: %s\n", cfg.BoreSecret))
 	}
+	if cfg.Password != "" {
+		b.WriteString(fmt.Sprintf("password: %s\n", cfg.Password))
+	}
 	if cfg.PublicURL != "" {
 		b.WriteString(fmt.Sprintf("public-url: %s\n", cfg.PublicURL))
 	}
 
-	return os.WriteFile(path, []byte(b.String()), 0o644)
+	return os.WriteFile(path, []byte(b.String()), 0o600)
 }
 
 // parseConfigFile reads a simple key: value config file.

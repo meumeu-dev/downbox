@@ -49,7 +49,7 @@ func (sm *ShareManager) Create(filePath, shareType, baseURL string) (*Share, err
 	if err != nil {
 		return nil, fmt.Errorf("file not found")
 	}
-	if !strings.HasPrefix(resolved, sm.root) {
+	if !strings.HasPrefix(resolved+"/", sm.root+"/") && resolved != sm.root {
 		return nil, fmt.Errorf("path not allowed")
 	}
 
@@ -119,12 +119,22 @@ func (sm *ShareManager) ServeShare(w http.ResponseWriter, r *http.Request) {
 	}
 
 	full := filepath.Join(sm.root, filepath.Clean(share.Path))
-	info, err := os.Stat(full)
+	resolved, err := filepath.EvalSymlinks(full)
+	if err != nil {
+		http.Error(w, "File not found", http.StatusNotFound)
+		return
+	}
+	if !strings.HasPrefix(resolved+"/", sm.root+"/") && resolved != sm.root {
+		http.Error(w, "Access denied", http.StatusForbidden)
+		return
+	}
+
+	info, err := os.Stat(resolved)
 	if err != nil {
 		http.Error(w, "File not found", http.StatusNotFound)
 		return
 	}
 
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", info.Name()))
-	http.ServeFile(w, r, full)
+	http.ServeFile(w, r, resolved)
 }

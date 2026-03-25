@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -53,13 +55,76 @@ func NewServer(cfg *Config, aria2Client *aria2.Client, fileHandler *files.Handle
 	// --- WebUI ---
 	mux.Handle("GET /", http.FileServer(webFS))
 
-	return withMiddleware(mux)
+	return withMiddleware(cfg, mux)
 }
 
 // --- Middleware ---
 
-func withMiddleware(next http.Handler) http.Handler {
-	return recoveryMiddleware(loggingMiddleware(next))
+func withMiddleware(cfg *Config, next http.Handler) http.Handler {
+	h := recoveryMiddleware(loggingMiddleware(next))
+	if cfg.Password != "" {
+		h = authMiddleware(cfg.Password, h)
+	}
+	return h
+}
+
+func authMiddleware(password string, next http.Handler) http.Handler {
+	passHash := sha256.Sum256([]byte(password))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Share links are public — no auth needed
+		if strings.HasPrefix(r.URL.Path, "/s/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Check cookie first
+		if c, err := r.Cookie("downbox_auth"); err == nil {
+			h := sha256.Sum256([]byte(c.Value))
+			if subtle.ConstantTimeCompare(h[:], passHash[:]) == 1 {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+
+		// Login endpoint
+		if r.URL.Path == "/api/login" && r.Method == "POST" {
+			var req struct {
+				Password string `json:"password"`
+			}
+			if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&req); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid JSON")
+				return
+			}
+			h := sha256.Sum256([]byte(req.Password))
+			if subtle.ConstantTimeCompare(h[:], passHash[:]) == 1 {
+				http.SetCookie(w, &http.Cookie{
+					Name:     "downbox_auth",
+					Value:    req.Password,
+					Path:     "/",
+					MaxAge:   86400 * 30,
+					HttpOnly: true,
+					SameSite: http.SameSiteStrictMode,
+				})
+				writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+			} else {
+				writeError(w, http.StatusUnauthorized, "wrong password")
+			}
+			return
+		}
+
+		// Static assets (CSS, JS, vendor) — allow without auth for login page
+		if !strings.HasPrefix(r.URL.Path, "/api/") && r.URL.Path != "/" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Not authenticated
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			writeError(w, http.StatusUnauthorized, "authentication required")
+		} else {
+			next.ServeHTTP(w, r)
+		}
+	})
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {
@@ -173,6 +238,27 @@ func handleAddDownload(client *aria2.Client) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "url is required")
 			return
 		}
+
+		// Block dangerous URLs (SSRF)
+		lower := strings.ToLower(req.URL)
+		if strings.HasPrefix(lower, "file:") {
+			writeError(w, http.StatusBadRequest, "file:// URLs are not allowed")
+			return
+		}
+
+		// Block dangerous aria2 options
+		blocked := map[string]bool{
+			"dir": true, "out": true, "log": true,
+			"on-download-complete": true, "on-download-error": true,
+			"on-bt-download-complete": true, "on-download-start": true,
+			"on-download-pause": true, "on-download-stop": true,
+		}
+		for k := range req.Options {
+			if blocked[k] {
+				delete(req.Options, k)
+			}
+		}
+
 		gid, err := client.AddURI([]string{req.URL}, req.Options)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
@@ -384,10 +470,8 @@ func handleStatus(cfg *Config, client *aria2.Client, tunnelMgr *TunnelManager) h
 				"port":                cfg.Port,
 				"downloadDir":         dlDir,
 				"tunnel":              cfg.Tunnel,
-				"cloudflaredToken":    cfg.CloudflaredToken,
 				"cloudflaredHostname": cfg.CloudflaredHostname,
-			"boreServer":          cfg.BoreServer,
-			"boreSecret":          cfg.BoreSecret,
+				"boreServer":          cfg.BoreServer,
 			},
 		}
 
