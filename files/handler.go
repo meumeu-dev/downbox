@@ -3,6 +3,7 @@ package files
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -242,6 +243,81 @@ func (h *Handler) HandleRename(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "renamed"})
+}
+
+// HandleUpload saves an uploaded file into the given directory.
+// POST /api/files/upload  (multipart/form-data: file + path)
+func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
+	// 10 GB max
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<30)
+
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid multipart form")
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "missing file field")
+		return
+	}
+	defer file.Close()
+
+	// Sanitize filename
+	fileName := filepath.Base(header.Filename)
+	if fileName == "." || fileName == ".." || fileName == "" {
+		writeError(w, http.StatusBadRequest, "invalid filename")
+		return
+	}
+
+	// Target directory (current browsed path)
+	dirPath := r.FormValue("path")
+	targetDir, err := h.safePath(dirPath)
+	if err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+
+	info, err := os.Stat(targetDir)
+	if err != nil || !info.IsDir() {
+		writeError(w, http.StatusBadRequest, "target directory not found")
+		return
+	}
+
+	destPath := filepath.Join(targetDir, fileName)
+
+	// Avoid overwriting: add suffix if file exists
+	if _, err := os.Stat(destPath); err == nil {
+		ext := filepath.Ext(fileName)
+		base := strings.TrimSuffix(fileName, ext)
+		for i := 1; ; i++ {
+			destPath = filepath.Join(targetDir, fmt.Sprintf("%s_%d%s", base, i, ext))
+			if _, err := os.Stat(destPath); os.IsNotExist(err) {
+				break
+			}
+		}
+	}
+
+	dst, err := os.Create(destPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "create file: "+err.Error())
+		return
+	}
+	defer dst.Close()
+
+	written, err := io.Copy(dst, file)
+	if err != nil {
+		os.Remove(destPath)
+		writeError(w, http.StatusInternalServerError, "write file: "+err.Error())
+		return
+	}
+
+	relPath := h.relativePath(destPath)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"name": filepath.Base(destPath),
+		"path": relPath,
+		"size": written,
+	})
 }
 
 // HandleInfo returns metadata for a file or directory.

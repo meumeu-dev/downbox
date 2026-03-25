@@ -277,6 +277,25 @@
         <section x-show="tab === 'files'" x-cloak>
             <div class="page-header">
                 <h1>Files</h1>
+                <label class="btn btn-primary upload-btn" :class="uploading && 'uploading'">
+                    <input type="file" @change="uploadFile($event)" hidden :disabled="uploading">
+                    <template x-if="!uploading">
+                        <span style="display:flex;align-items:center;gap:6px">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                            Upload
+                        </span>
+                    </template>
+                    <template x-if="uploading">
+                        <span style="display:flex;align-items:center;gap:6px">
+                            <span class="spinner-sm"></span>
+                            <span x-text="uploadProgress + '%'"></span>
+                        </span>
+                    </template>
+                </label>
             </div>
 
             <!-- Breadcrumbs -->
@@ -340,8 +359,8 @@
                                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                                         </svg>
                                     </button>
-                                    <div class="share-pop" x-data="{open: false, shares: [], loading: ''}">
-                                        <button class="btn btn-xs btn-ghost" @click="open=!open; if(open) shares=await getFileShares(f.path)" title="Share">
+                                    <div class="share-pop" x-data="{open: false, shares: [], loading: ''}" x-ref="spWrap">
+                                        <button class="btn btn-xs btn-ghost" @click="open=!open; if(open){ shares=await getFileShares(f.path); $nextTick(()=>positionPanel($refs.spWrap)) }" title="Share">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                                 <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
                                                 <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>

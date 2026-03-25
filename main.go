@@ -550,8 +550,8 @@ func runServer(args []string) {
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
 		Handler:      mux,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 120 * time.Second,
+		ReadTimeout:  0,
+		WriteTimeout: 0,
 		IdleTimeout:  120 * time.Second,
 	}
 

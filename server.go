@@ -33,6 +33,7 @@ func NewServer(cfg *Config, aria2Client *aria2.Client, fileHandler *files.Handle
 	mux.HandleFunc("DELETE /api/files", fileHandler.HandleDelete)
 	mux.HandleFunc("POST /api/files/rename", fileHandler.HandleRename)
 	mux.HandleFunc("GET /api/files/info", fileHandler.HandleInfo)
+	mux.HandleFunc("POST /api/files/upload", fileHandler.HandleUpload)
 
 	// --- Setup wizard ---
 	mux.HandleFunc("GET /api/setup/status", handleSetupStatus(cfg))

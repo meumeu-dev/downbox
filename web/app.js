@@ -158,6 +158,43 @@ function downbox() {
             }));
         },
 
+        uploading: false,
+        uploadProgress: 0,
+
+        async uploadFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            this.uploading = true;
+            this.uploadProgress = 0;
+
+            const form = new FormData();
+            form.append('file', file);
+            form.append('path', this.currentPath);
+
+            try {
+                const xhr = new XMLHttpRequest();
+                xhr.upload.onprogress = (ev) => {
+                    if (ev.lengthComputable) this.uploadProgress = Math.round(ev.loaded / ev.total * 100);
+                };
+                await new Promise((resolve, reject) => {
+                    xhr.onload = () => {
+                        if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText));
+                        else reject(new Error(xhr.responseText));
+                    };
+                    xhr.onerror = () => reject(new Error('Upload failed'));
+                    xhr.open('POST', '/api/files/upload');
+                    xhr.send(form);
+                });
+                this.toast('Upload complete');
+                this.fetchFiles();
+            } catch (err) {
+                this.toast('Upload failed: ' + err.message);
+            }
+            this.uploading = false;
+            this.uploadProgress = 0;
+            e.target.value = '';
+        },
+
         async deleteFile(f) {
             if (!confirm(`Delete "${f.name}"?`)) return;
             await fetch('/api/files?path=' + encodeURIComponent(f.path), { method: 'DELETE' });
@@ -201,6 +238,23 @@ function downbox() {
         copyLink(link) {
             navigator.clipboard.writeText(link);
             this.toast('Link copied!');
+        },
+
+        positionPanel(wrap) {
+            const panel = wrap.querySelector('.share-panel');
+            if (!panel) return;
+            const btn = wrap.querySelector('button');
+            const rect = btn.getBoundingClientRect();
+            // Position above the button, clamped to viewport
+            let top = rect.top - panel.offsetHeight - 6;
+            let left = rect.left;
+            if (top < 8) top = rect.bottom + 6;
+            if (left + panel.offsetWidth > window.innerWidth - 8) {
+                left = window.innerWidth - panel.offsetWidth - 8;
+            }
+            if (left < 8) left = 8;
+            panel.style.top = top + 'px';
+            panel.style.left = left + 'px';
         },
 
         // --- Settings ---

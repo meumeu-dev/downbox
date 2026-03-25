@@ -147,11 +147,17 @@ a:hover { color: var(--primary-hover); }
 
 .page-header {
     margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
 }
 .page-header h1 {
     font-size: 1.5rem;
     font-weight: 700;
 }
+.upload-btn { cursor: pointer; }
+.upload-btn.uploading { opacity: 0.7; pointer-events: none; }
 
 /* ===== CARDS ===== */
 
@@ -524,15 +530,14 @@ a:hover { color: var(--primary-hover); }
 .share-pop { position: relative; display: inline-block; }
 
 .share-panel {
-    position: absolute;
-    bottom: calc(100% + 6px);
-    right: 0;
+    position: fixed;
+    z-index: 100;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 0.8rem;
-    z-index: 100;
-    min-width: 300px;
+    min-width: 320px;
+    max-width: calc(100vw - 2rem);
     box-shadow: 0 8px 24px rgba(0,0,0,0.4);
 }
 
