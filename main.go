@@ -48,6 +48,9 @@ type Config struct {
 	DNSServers          string // comma-separated: "1.1.1.1,8.8.8.8"
 	Interface           string // network interface for downloads: "tun0", "eth0"
 	ExcludeTrackers     string // comma-separated tracker URIs to block, or "*"
+	Proxy               string // SOCKS/HTTP proxy: "socks5://127.0.0.1:9050"
+	BlocklistURL        string // URL to ipfilter.dat / blocklist (auto-downloaded)
+	BlocklistMode       string // "proxy", "iptables", "none"
 	SetupDone           bool
 	Dev                 bool
 }
@@ -537,6 +540,13 @@ func runServer(args []string) {
 		slog.Warn("aria2 not responding yet, will retry in background")
 	}
 
+	// Blocklist
+	blocklistMgr := NewBlocklistManager(cfg)
+	if err := blocklistMgr.Start(); err != nil {
+		slog.Warn("blocklist failed", "error", err)
+	}
+	defer blocklistMgr.Stop()
+
 	// Web filesystem
 	var webFileSystem http.FileSystem
 	if cfg.Dev {
@@ -648,6 +658,12 @@ func startAria2(cfg Config) (*exec.Cmd, error) {
 	if cfg.ExcludeTrackers != "" {
 		args = append(args, fmt.Sprintf("--bt-exclude-tracker=%s", cfg.ExcludeTrackers))
 		slog.Info("aria2 excluding trackers", "trackers", cfg.ExcludeTrackers)
+	}
+
+	// Proxy (SOCKS5/HTTP)
+	if cfg.Proxy != "" {
+		args = append(args, fmt.Sprintf("--all-proxy=%s", cfg.Proxy))
+		slog.Info("aria2 using proxy", "proxy", cfg.Proxy)
 	}
 
 	cmd := exec.Command(aria2Path, args...)

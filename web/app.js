@@ -14,7 +14,8 @@ function downbox() {
         wizardError: '',
 
         // Settings
-        settingsData: { tunnel: 'none', cloudflaredToken: '', cloudflaredHostname: '', boreServer: '', boreSecret: '', port: 8080, downloadDir: '~/Downloads', dnsServers: '', interface: '', excludeTrackers: '' },
+        settingsData: { tunnel: 'none', cloudflaredToken: '', cloudflaredHostname: '', boreServer: '', boreSecret: '', port: 8080, downloadDir: '~/Downloads', dnsServers: '', interface: '', excludeTrackers: '', proxy: '', blocklistUrl: '', blocklistMode: 'none' },
+        availableInterfaces: [],
         settingsSaving: false,
         settingsSaved: false,
 
@@ -302,7 +303,15 @@ function downbox() {
                     dnsServers: s.config?.dnsServers || '',
                     interface: s.config?.interface || '',
                     excludeTrackers: s.config?.excludeTrackers || '',
+                    proxy: s.config?.proxy || '',
+                    blocklistUrl: s.config?.blocklistUrl || '',
+                    blocklistMode: s.config?.blocklistMode || 'none',
                 };
+                // Fetch available interfaces
+                try {
+                    const ir = await fetch('/api/interfaces');
+                    this.availableInterfaces = await ir.json() || [];
+                } catch {}
             } catch {}
         },
 

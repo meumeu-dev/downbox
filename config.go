@@ -100,6 +100,15 @@ func loadConfig(cfg *Config, flagsSet map[string]bool) string {
 		if v, ok := values["exclude-trackers"]; ok {
 			cfg.ExcludeTrackers = v
 		}
+		if v, ok := values["proxy"]; ok {
+			cfg.Proxy = v
+		}
+		if v, ok := values["blocklist-url"]; ok {
+			cfg.BlocklistURL = v
+		}
+		if v, ok := values["blocklist-mode"]; ok {
+			cfg.BlocklistMode = v
+		}
 		if v, ok := values["setup"]; ok && v == "true" {
 			cfg.SetupDone = true
 		}
@@ -158,6 +167,15 @@ func saveConfig(cfg *Config) error {
 	}
 	if cfg.ExcludeTrackers != "" {
 		b.WriteString(fmt.Sprintf("exclude-trackers: %s\n", cfg.ExcludeTrackers))
+	}
+	if cfg.Proxy != "" {
+		b.WriteString(fmt.Sprintf("proxy: %s\n", cfg.Proxy))
+	}
+	if cfg.BlocklistURL != "" {
+		b.WriteString(fmt.Sprintf("blocklist-url: %s\n", cfg.BlocklistURL))
+	}
+	if cfg.BlocklistMode != "" {
+		b.WriteString(fmt.Sprintf("blocklist-mode: %s\n", cfg.BlocklistMode))
 	}
 	if cfg.PublicURL != "" {
 		b.WriteString(fmt.Sprintf("public-url: %s\n", cfg.PublicURL))

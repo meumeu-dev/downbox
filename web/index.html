@@ -519,12 +519,37 @@
                         <small>Custom DNS for downloads. Comma-separated. Empty = system DNS</small>
                     </label>
                     <label>Network interface
-                        <input type="text" x-model="settingsData.interface" placeholder="tun0, eth0, wg0...">
-                        <small>Bind downloads to a specific interface (VPN, etc.). Empty = default</small>
+                        <select x-model="settingsData.interface">
+                            <option value="">Default (all interfaces)</option>
+                            <template x-for="iface in availableInterfaces" :key="iface.name">
+                                <option :value="iface.name" x-text="iface.name + (iface.up ? ' (' + (iface.addrs?.[0] || 'no IP') + ')' : ' (down)')"></option>
+                            </template>
+                        </select>
+                        <small>Bind downloads to a specific interface (VPN, etc.)</small>
+                    </label>
+                    <label>Proxy
+                        <input type="text" x-model="settingsData.proxy" placeholder="socks5://127.0.0.1:9050">
+                        <small>SOCKS5 or HTTP proxy for all downloads</small>
                     </label>
                     <label>Exclude trackers
                         <input type="text" x-model="settingsData.excludeTrackers" placeholder="* or tracker URLs">
                         <small>Comma-separated tracker URIs to block. Use * to block all trackers</small>
+                    </label>
+                </div>
+
+                <div class="card settings-card">
+                    <h3>IP Blocklist</h3>
+                    <label>Blocklist URL
+                        <input type="text" x-model="settingsData.blocklistUrl" placeholder="https://example.com/blocklist.dat">
+                        <small>URL to an IP blocklist (ipfilter.dat, P2P format, plain IP/CIDR). Auto-refreshed daily</small>
+                    </label>
+                    <label>Blocklist mode
+                        <select x-model="settingsData.blocklistMode">
+                            <option value="none">Disabled</option>
+                            <option value="iptables">iptables/ipset (needs root, best for bare metal)</option>
+                            <option value="proxy">Proxy-based (needs a filtering proxy)</option>
+                        </select>
+                        <small>iptables blocks IPs at the kernel level. Proxy delegates filtering to your SOCKS proxy</small>
                     </label>
                 </div>
 

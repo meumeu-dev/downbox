@@ -56,6 +56,7 @@ func NewServer(cfg *Config, aria2Client *aria2.Client, fileHandler *files.Handle
 
 	// --- System ---
 	mux.HandleFunc("GET /api/status", handleStatus(cfg, aria2Client, tunnelMgr))
+	mux.HandleFunc("GET /api/interfaces", handleListInterfaces())
 
 	// --- WebUI ---
 	mux.Handle("GET /", http.FileServer(webFS))
@@ -318,6 +319,69 @@ func filterAria2Options(opts map[string]string) map[string]string {
 	return safe
 }
 
+// resolveAndValidateURL follows redirects manually, validating each hop against SSRF
+func resolveAndValidateURL(rawURL string) (string, error) {
+	// First validate the initial URL
+	if err := validateDownloadURL(rawURL); err != nil {
+		return "", err
+	}
+
+	lower := strings.ToLower(rawURL)
+	// Magnet/FTP — no redirects to follow
+	if strings.HasPrefix(lower, "magnet:") || strings.HasPrefix(lower, "ftp://") {
+		return rawURL, nil
+	}
+
+	// Follow redirects manually (max 10 hops)
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse // don't follow, we handle it
+		},
+	}
+
+	currentURL := rawURL
+	for i := 0; i < 10; i++ {
+		req, err := http.NewRequest("HEAD", currentURL, nil)
+		if err != nil {
+			return currentURL, nil // can't build request, let aria2 try
+		}
+		req.Header.Set("User-Agent", "DownBox/1.0")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return currentURL, nil // can't reach, let aria2 try
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode < 300 || resp.StatusCode >= 400 {
+			return currentURL, nil // not a redirect, we're done
+		}
+
+		location := resp.Header.Get("Location")
+		if location == "" {
+			return currentURL, nil
+		}
+
+		// Resolve relative redirects
+		base, _ := url.Parse(currentURL)
+		ref, err := url.Parse(location)
+		if err != nil {
+			return "", fmt.Errorf("invalid redirect URL")
+		}
+		nextURL := base.ResolveReference(ref).String()
+
+		// Validate the redirect destination
+		if err := validateDownloadURL(nextURL); err != nil {
+			return "", fmt.Errorf("redirect blocked: %s", err.Error())
+		}
+
+		currentURL = nextURL
+	}
+
+	return "", fmt.Errorf("too many redirects")
+}
+
 // --- Download handlers ---
 
 func handleListDownloads(client *aria2.Client) http.HandlerFunc {
@@ -379,18 +443,16 @@ func handleAddDownload(client *aria2.Client) http.HandlerFunc {
 			return
 		}
 
-		// Block dangerous URLs (SSRF)
-		if err := validateDownloadURL(req.URL); err != nil {
+		// Block dangerous URLs (SSRF) — validate initial + follow redirects
+		finalURL, err := resolveAndValidateURL(req.URL)
+		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		req.URL = finalURL
 
-		// Whitelist safe aria2 options only, force no redirect (SSRF prevention)
+		// Whitelist safe aria2 options only
 		req.Options = filterAria2Options(req.Options)
-		if req.Options == nil {
-			req.Options = make(map[string]string)
-		}
-		req.Options["follow-redirect"] = "false"
 
 		gid, err := client.AddURI([]string{req.URL}, req.Options)
 		if err != nil {
@@ -468,6 +530,9 @@ func handleSetupSave(cfg *Config, tunnelMgr *TunnelManager) http.HandlerFunc {
 			DNSServers          string `json:"dnsServers"`
 			Interface           string `json:"interface"`
 			ExcludeTrackers     string `json:"excludeTrackers"`
+			Proxy               string `json:"proxy"`
+			BlocklistURL        string `json:"blocklistUrl"`
+			BlocklistMode       string `json:"blocklistMode"`
 		}
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -489,6 +554,9 @@ func handleSetupSave(cfg *Config, tunnelMgr *TunnelManager) http.HandlerFunc {
 		cfg.DNSServers = req.DNSServers
 		cfg.Interface = req.Interface
 		cfg.ExcludeTrackers = req.ExcludeTrackers
+		cfg.Proxy = req.Proxy
+		cfg.BlocklistURL = req.BlocklistURL
+		cfg.BlocklistMode = req.BlocklistMode
 		cfg.SetupDone = true
 
 		// Set public URL based on tunnel
@@ -593,6 +661,33 @@ func handleDeleteShare(mgr *ShareManager) http.HandlerFunc {
 
 // --- System handler ---
 
+func handleListInterfaces() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ifaces, err := net.Interfaces()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		var result []map[string]interface{}
+		for _, iface := range ifaces {
+			if iface.Flags&net.FlagLoopback != 0 {
+				continue // skip loopback
+			}
+			addrs, _ := iface.Addrs()
+			var ips []string
+			for _, a := range addrs {
+				ips = append(ips, a.String())
+			}
+			result = append(result, map[string]interface{}{
+				"name":  iface.Name,
+				"up":    iface.Flags&net.FlagUp != 0,
+				"addrs": ips,
+			})
+		}
+		writeJSON(w, http.StatusOK, result)
+	}
+}
+
 func handleStatus(cfg *Config, client *aria2.Client, tunnelMgr *TunnelManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Convert downloadDir back to ~ form for display
@@ -614,6 +709,9 @@ func handleStatus(cfg *Config, client *aria2.Client, tunnelMgr *TunnelManager) h
 				"dnsServers":          cfg.DNSServers,
 				"interface":           cfg.Interface,
 				"excludeTrackers":     cfg.ExcludeTrackers,
+				"proxy":               cfg.Proxy,
+				"blocklistUrl":        cfg.BlocklistURL,
+				"blocklistMode":       cfg.BlocklistMode,
 			},
 		}
 
