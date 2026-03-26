@@ -34,7 +34,10 @@ func NewServer(cfg *Config, aria2Client *aria2.Client, fileHandler *files.Handle
 
 	// --- Downloads (aria2 proxy) ---
 	mux.HandleFunc("GET /api/downloads", handleListDownloads(aria2Client))
-	mux.HandleFunc("POST /api/downloads", handleAddDownload(cfg, aria2Client))
+	// Module manager — single instance shared across all handlers
+	moduleMgr := NewModuleManager()
+
+	mux.HandleFunc("POST /api/downloads", handleAddDownload(cfg, aria2Client, moduleMgr))
 	mux.HandleFunc("DELETE /api/downloads/{gid}", handleRemoveDownload(aria2Client))
 	mux.HandleFunc("POST /api/downloads/{gid}/pause", handlePauseDownload(aria2Client))
 	mux.HandleFunc("POST /api/downloads/{gid}/resume", handleResumeDownload(aria2Client))
@@ -64,7 +67,6 @@ func NewServer(cfg *Config, aria2Client *aria2.Client, fileHandler *files.Handle
 	mux.HandleFunc("GET /api/interfaces", handleListInterfaces())
 
 	// --- Modules ---
-	moduleMgr := NewModuleManager()
 	mux.HandleFunc("GET /api/modules", handleModuleList(moduleMgr))
 	mux.HandleFunc("POST /api/modules/install", handleModuleInstall(moduleMgr))
 	mux.HandleFunc("DELETE /api/modules/{name}", handleModuleRemove(moduleMgr))
@@ -536,7 +538,10 @@ func isVideoURL(rawURL string) bool {
 	return false
 }
 
-func handleAddDownload(cfg *Config, client *aria2.Client) http.HandlerFunc {
+// ytdlpSem limits concurrent yt-dlp processes
+var ytdlpSem = make(chan struct{}, 3)
+
+func handleAddDownload(cfg *Config, client *aria2.Client, moduleMgr *ModuleManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		contentType := r.Header.Get("Content-Type")
 		if strings.HasPrefix(contentType, "multipart/form-data") {
@@ -578,8 +583,7 @@ func handleAddDownload(cfg *Config, client *aria2.Client) http.HandlerFunc {
 		}
 
 		// If yt-dlp is installed and URL is a known video site, use yt-dlp
-		mm := NewModuleManager()
-		if isVideoURL(req.URL) && mm.IsInstalled("yt-dlp") {
+		if isVideoURL(req.URL) && moduleMgr.IsInstalled("yt-dlp") {
 			// Still validate against SSRF (blocks internal IPs even for video hosts)
 			if err := validateDownloadURL(req.URL); err != nil {
 				writeError(w, http.StatusBadRequest, err.Error())
@@ -588,8 +592,15 @@ func handleAddDownload(cfg *Config, client *aria2.Client) http.HandlerFunc {
 			cfg.mu.RLock()
 			dlDir := cfg.DownloadDir
 			cfg.mu.RUnlock()
-			ytdlp := mm.BinPath("yt-dlp")
+			ytdlp := moduleMgr.BinPath("yt-dlp")
+			select {
+			case ytdlpSem <- struct{}{}:
+			default:
+				writeError(w, http.StatusTooManyRequests, "too many video downloads, try again later")
+				return
+			}
 			go func() {
+				defer func() { <-ytdlpSem }()
 				cmd := exec.Command(ytdlp,
 					"--restrict-filenames",       // sanitize output filename
 					"--paths", dlDir,              // force output to download dir

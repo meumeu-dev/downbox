@@ -307,9 +307,7 @@ func (mm *ModuleManager) installFromZip(r io.Reader, destDir, binaryName string)
 	}
 	defer os.RemoveAll(extractDir)
 
-	cmd := exec.Command("unzip", "-o", "-q", "-K", tmpFile.Name(), "-d", extractDir)
-	// Note: unzip does not follow symlinks when extracting by default,
-	// but we also verify the extracted file is not a symlink below
+	cmd := exec.Command("unzip", "-o", "-q", tmpFile.Name(), "-d", extractDir)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("unzip failed: %w", err)
 	}
