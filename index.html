@@ -276,8 +276,9 @@
         </div>
 
         <div class="specs">
+            <div class="spec"><strong id="binSize">~7MB</strong>&nbsp;binary</div>
             <div class="spec"><strong>0</strong>&nbsp;dependencies</div>
-            <div class="spec"><strong>ARM</strong>&nbsp;+ x86</div>
+            <div class="spec"><strong>amd64</strong>&nbsp;i386&nbsp;arm64&nbsp;armv7</div>
             <div class="spec"><strong>Go</strong>&nbsp;+ Alpine.js</div>
             <div class="spec"><strong>MIT</strong>&nbsp;License</div>
         </div>
@@ -298,5 +299,12 @@
             <a href="https://meumeu.dev">meumeu.dev</a>
         </footer>
     </div>
+    <script>
+    fetch('https://api.github.com/repos/meumeu-dev/downbox/releases/latest')
+        .then(r=>r.json()).then(d=>{
+            const a=d.assets&&d.assets.find(a=>a.name==='downbox-amd64');
+            if(a){const mb=(a.size/1024/1024).toFixed(1);document.getElementById('binSize').textContent='~'+mb+'MB';}
+        }).catch(()=>{});
+    </script>
 </body>
 </html>
