@@ -48,6 +48,7 @@ func NewServer(cfg *Config, aria2Client *aria2.Client, fileHandler *files.Handle
 	mux.HandleFunc("DELETE /api/files", fileHandler.HandleDelete)
 	mux.HandleFunc("POST /api/files/rename", fileHandler.HandleRename)
 	mux.HandleFunc("GET /api/files/info", fileHandler.HandleInfo)
+	mux.HandleFunc("POST /api/files/folder", fileHandler.HandleCreateFolder)
 	mux.HandleFunc("POST /api/files/upload", fileHandler.HandleUpload)
 
 	// --- Setup wizard ---
@@ -65,6 +66,8 @@ func NewServer(cfg *Config, aria2Client *aria2.Client, fileHandler *files.Handle
 	// --- System ---
 	mux.HandleFunc("GET /api/status", handleStatus(cfg, aria2Client, tunnelMgr))
 	mux.HandleFunc("GET /api/interfaces", handleListInterfaces())
+	mux.HandleFunc("GET /api/version", handleVersion())
+	mux.HandleFunc("POST /api/update", handleUpdate())
 
 	// --- Modules ---
 	mux.HandleFunc("GET /api/modules", handleModuleList(moduleMgr))
@@ -894,6 +897,50 @@ func handleDeleteShare(mgr *ShareManager) http.HandlerFunc {
 }
 
 // --- System handler ---
+
+func handleVersion() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Check latest version from GitHub
+		latest := ""
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Get("https://api.github.com/repos/meumeu-dev/downbox/releases/latest")
+		if err == nil {
+			defer resp.Body.Close()
+			var release struct {
+				TagName string `json:"tag_name"`
+			}
+			json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&release)
+			latest = release.TagName
+		}
+
+		updateAvailable := latest != "" && latest != version && version != "dev" && version != "docker"
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"current":         version,
+			"latest":          latest,
+			"updateAvailable": updateAvailable,
+		})
+	}
+}
+
+func handleUpdate() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Trigger update in background
+		go func() {
+			execPath, err := os.Executable()
+			if err != nil {
+				slog.Error("update: cannot find executable", "error", err)
+				return
+			}
+			cmd := exec.Command(execPath, "update")
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				slog.Error("update failed", "error", err)
+			}
+		}()
+		writeJSON(w, http.StatusOK, map[string]string{"status": "updating"})
+	}
+}
 
 func handleListInterfaces() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

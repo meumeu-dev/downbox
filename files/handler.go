@@ -324,6 +324,41 @@ func (h *Handler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 
 // HandleInfo returns metadata for a file or directory.
 // GET /api/files/info?path=
+// HandleCreateFolder creates a new directory.
+// POST /api/files/folder  {"path": "parent", "name": "new-folder"}
+func (h *Handler) HandleCreateFolder(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Path string `json:"path"`
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.Name == "" || filepath.Base(req.Name) != req.Name || req.Name == "." || req.Name == ".." {
+		writeError(w, http.StatusBadRequest, "invalid folder name")
+		return
+	}
+
+	parentPath, err := h.safePath(req.Path)
+	if err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+
+	folderPath := filepath.Join(parentPath, req.Name)
+	if err := os.Mkdir(folderPath, 0o755); err != nil {
+		if os.IsExist(err) {
+			writeError(w, http.StatusConflict, "folder already exists")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "created"})
+}
+
 func (h *Handler) HandleInfo(w http.ResponseWriter, r *http.Request) {
 	userPath := r.URL.Query().Get("path")
 	targetPath, err := h.safePath(userPath)

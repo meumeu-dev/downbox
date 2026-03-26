@@ -40,6 +40,12 @@ function downbox() {
         previewType: '',
         previewName: '',
 
+        // Version
+        currentVersion: '',
+        latestVersion: '',
+        updateAvailable: false,
+        updating: false,
+
         // Toast
         toastMsg: '',
         toastVisible: false,
@@ -109,11 +115,32 @@ function downbox() {
             this.wizardSaving = false;
         },
 
+        async checkVersion() {
+            try {
+                const r = await fetch('/api/version');
+                const d = await r.json();
+                this.currentVersion = d.current;
+                this.latestVersion = d.latest;
+                this.updateAvailable = d.updateAvailable;
+            } catch {}
+        },
+
+        async doUpdate() {
+            if (!confirm('Update DownBox to ' + this.latestVersion + '? The server will restart.')) return;
+            this.updating = true;
+            try {
+                await fetch('/api/update', { method: 'POST' });
+                this.toast('Updating... page will reload');
+                setTimeout(() => location.reload(), 5000);
+            } catch { this.toast('Update failed'); }
+            this.updating = false;
+        },
+
         startApp() {
             this.fetchStatus();
             this.fetchDownloads();
             this.fetchFiles();
-            this.fetchShares();
+            this.checkVersion();
             setInterval(() => this.fetchDownloads(), 2000);
             setInterval(() => this.fetchStatus(), 10000);
         },
@@ -226,6 +253,21 @@ function downbox() {
             this.uploading = false;
             this.uploadProgress = 0;
             e.target.value = '';
+        },
+
+        async createFolder() {
+            const name = prompt('Folder name:');
+            if (!name || !name.trim()) return;
+            try {
+                const r = await fetch('/api/files/folder', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: this.currentPath, name: name.trim() })
+                });
+                const d = await r.json();
+                if (d.error) this.toast(d.error);
+                else this.fetchFiles();
+            } catch { this.toast('Failed to create folder'); }
         },
 
         async deleteFile(f) {
