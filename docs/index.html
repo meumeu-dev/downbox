@@ -187,7 +187,7 @@
                     <line x1="12" y1="15" x2="12" y2="3"/>
                 </svg>
             </div>
-            <h1>DownBox</h1>
+            <h1>DownBox <span id="ver" style="font-size:0.5em;font-weight:400;color:#6c5ce7"></span></h1>
             <p>Lightweight self-hosted download station with web UI. Upload, download and share files via encrypted tunnel. Privacy-first, single binary.</p>
         </div>
 
@@ -304,6 +304,7 @@
         .then(r=>r.json()).then(d=>{
             const a=d.assets&&d.assets.find(a=>a.name==='downbox-amd64');
             if(a){const mb=(a.size/1024/1024).toFixed(1);document.getElementById('binSize').textContent='~'+mb+'MB';}
+            if(d.tag_name)document.getElementById('ver').textContent=d.tag_name;
         }).catch(()=>{});
     </script>
 </body>
