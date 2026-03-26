@@ -179,6 +179,11 @@ a:hover { color: var(--primary-hover); }
 .module-actions { display: flex; align-items: center; gap: 0.5rem; }
 .module-root-badge { font-size: 0.7rem; color: var(--yellow); background: rgba(240,180,41,0.1); padding: 0.15em 0.5em; border-radius: 4px; }
 
+/* Logs */
+.log-box { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; max-height: 70vh; overflow-y: auto; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.75rem; }
+.log-line { color: var(--text-muted); padding: 0.1rem 0; white-space: pre-wrap; word-break: break-all; }
+.log-line:hover { color: var(--text); }
+
 /* ===== CARDS ===== */
 
 .card {

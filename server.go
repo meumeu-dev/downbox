@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -67,6 +68,8 @@ func NewServer(cfg *Config, aria2Client *aria2.Client, fileHandler *files.Handle
 	mux.HandleFunc("GET /api/status", handleStatus(cfg, aria2Client, tunnelMgr))
 	mux.HandleFunc("GET /api/interfaces", handleListInterfaces())
 	mux.HandleFunc("GET /api/version", handleVersion())
+	mux.HandleFunc("GET /api/logs", handleLogs())
+	mux.HandleFunc("POST /api/restart", handleRestart())
 	mux.HandleFunc("POST /api/update", handleUpdate())
 
 	// --- Modules ---
@@ -939,6 +942,56 @@ func handleUpdate() http.HandlerFunc {
 			}
 		}()
 		writeJSON(w, http.StatusOK, map[string]string{"status": "updating"})
+	}
+}
+
+func handleLogs() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Read last N lines from log or journalctl
+		var lines []string
+
+		// Try journalctl first (systemd)
+		cmd := exec.Command("journalctl", "-u", "downbox", "--no-pager", "-n", "100", "--output", "short")
+		out, err := cmd.Output()
+		if err == nil && len(out) > 0 {
+			lines = strings.Split(strings.TrimSpace(string(out)), "\n")
+		}
+
+		// Fallback: read log file
+		if len(lines) == 0 {
+			home, _ := os.UserHomeDir()
+			logPath := filepath.Join(home, ".config", "downbox", "downbox.log")
+			if data, err := os.ReadFile(logPath); err == nil {
+				all := strings.Split(strings.TrimSpace(string(data)), "\n")
+				if len(all) > 100 {
+					all = all[len(all)-100:]
+				}
+				lines = all
+			}
+		}
+
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"lines": lines,
+		})
+	}
+}
+
+func handleRestart() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "restarting"})
+
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			// Try systemctl restart first
+			if exec.Command("systemctl", "is-active", "--quiet", "downbox").Run() == nil {
+				exec.Command("sudo", "systemctl", "restart", "downbox").Run()
+			} else {
+				// Self-restart via exec
+				execPath, _ := os.Executable()
+				syscall.Kill(os.Getpid(), syscall.SIGTERM)
+				_ = execPath // restart handled by daemon mode
+			}
+		}()
 	}
 }
 

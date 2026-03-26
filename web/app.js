@@ -18,6 +18,7 @@ function downbox() {
         availableInterfaces: [],
         settingsSaving: false,
         settingsSaved: false,
+        needsRestart: false,
 
         // Modules
         modules: [],
@@ -39,6 +40,9 @@ function downbox() {
         previewSrc: '',
         previewType: '',
         previewName: '',
+
+        // Logs
+        logs: [],
 
         // Version
         currentVersion: '',
@@ -113,6 +117,23 @@ function downbox() {
                 this.wizardError = e.message;
             }
             this.wizardSaving = false;
+        },
+
+        async fetchLogs() {
+            try {
+                const r = await fetch('/api/logs');
+                const d = await r.json();
+                this.logs = d.lines || [];
+            } catch { this.logs = []; }
+        },
+
+        async restartServer() {
+            if (!confirm('Restart DownBox? Active downloads will be interrupted.')) return;
+            try {
+                await fetch('/api/restart', { method: 'POST' });
+                this.toast('Restarting...');
+                setTimeout(() => location.reload(), 3000);
+            } catch {}
         },
 
         async checkVersion() {
@@ -373,6 +394,7 @@ function downbox() {
                 const d = await r.json();
                 if (d.ok) {
                     this.settingsSaved = true;
+                    this.needsRestart = true;
                     this.fetchStatus();
                     setTimeout(() => { this.settingsSaved = false; }, 3000);
                 }
