@@ -167,6 +167,18 @@ a:hover { color: var(--primary-hover); }
 .bl-custom { display: flex; gap: 0.4rem; align-items: center; }
 .bl-custom input { flex: 1; }
 
+/* Modules */
+.module-grid { display: flex; flex-direction: column; gap: 0.6rem; }
+.module-card { padding: 1rem 1.2rem; }
+.module-top { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 0.6rem; }
+.module-icon { font-size: 1.5rem; }
+.module-info { flex: 1; }
+.module-info strong { display: block; font-size: 0.95rem; }
+.module-desc { font-size: 0.8rem; color: var(--text-muted); }
+.module-bottom { display: flex; align-items: center; gap: 0.6rem; }
+.module-actions { display: flex; align-items: center; gap: 0.5rem; }
+.module-root-badge { font-size: 0.7rem; color: var(--yellow); background: rgba(240,180,41,0.1); padding: 0.15em 0.5em; border-radius: 4px; }
+
 /* ===== CARDS ===== */
 
 .card {

@@ -108,6 +108,9 @@ func main() {
 		case "update":
 			cmdUpdate()
 			return
+		case "module":
+			cmdModule(os.Args[2:])
+			return
 		case "version":
 			fmt.Println("downbox", version)
 			return
@@ -249,6 +252,53 @@ func cmdInit() {
 	}
 	fmt.Printf("Config created: %s\n", configPath)
 	fmt.Println("Edit it, then run: downbox start")
+}
+
+func cmdModule(args []string) {
+	mm := NewModuleManager()
+	if len(args) == 0 {
+		args = []string{"list"}
+	}
+	switch args[0] {
+	case "list":
+		for _, m := range mm.List() {
+			status := "not installed"
+			if m.Installed {
+				status = "installed"
+				if m.Version != "" {
+					status += " (" + m.Version + ")"
+				}
+			}
+			root := ""
+			if m.NeedsRoot {
+				root = " [root]"
+			}
+			fmt.Printf("  %-12s %s%s — %s\n", m.Name, status, root, m.Description)
+		}
+	case "add", "install":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: downbox module add <name>")
+			os.Exit(1)
+		}
+		if err := mm.Install(args[1]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("%s installed\n", args[1])
+	case "remove":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: downbox module remove <name>")
+			os.Exit(1)
+		}
+		if err := mm.Remove(args[1]); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("%s removed\n", args[1])
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown module command: %s\nUsage: downbox module [list|add|remove] [name]\n", args[0])
+		os.Exit(1)
+	}
 }
 
 func printUsage() {

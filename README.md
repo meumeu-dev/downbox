@@ -44,6 +44,7 @@ docker compose up -d
 - **VPN interface binding** — Route downloads through a specific network interface (tun0, wg0)
 - **Docker support** — Multi-stage Alpine image, ~44MB, non-root
 - **Password auth** — Mandatory authentication, salted password hash, session tokens
+- **Modules** — Extend with yt-dlp (video downloads), rclone (cloud sync), WireGuard, OpenVPN
 - **Tiny footprint** — ~7MB binary, ~25MB RAM. No Docker, no database, 0 Go dependencies
 
 ## Security
@@ -68,6 +69,9 @@ downbox status              # Show status
 downbox update              # Update to latest version
 downbox init                # Generate config file
 downbox help                # Show help
+downbox module list         # List available modules
+downbox module add yt-dlp   # Install a module
+downbox module remove rclone # Remove a module
 ```
 
 ## Config

@@ -14,6 +14,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -33,7 +35,7 @@ func NewServer(cfg *Config, aria2Client *aria2.Client, fileHandler *files.Handle
 
 	// --- Downloads (aria2 proxy) ---
 	mux.HandleFunc("GET /api/downloads", handleListDownloads(aria2Client))
-	mux.HandleFunc("POST /api/downloads", handleAddDownload(aria2Client))
+	mux.HandleFunc("POST /api/downloads", handleAddDownload(cfg, aria2Client))
 	mux.HandleFunc("DELETE /api/downloads/{gid}", handleRemoveDownload(aria2Client))
 	mux.HandleFunc("POST /api/downloads/{gid}/pause", handlePauseDownload(aria2Client))
 	mux.HandleFunc("POST /api/downloads/{gid}/resume", handleResumeDownload(aria2Client))
@@ -61,6 +63,12 @@ func NewServer(cfg *Config, aria2Client *aria2.Client, fileHandler *files.Handle
 	// --- System ---
 	mux.HandleFunc("GET /api/status", handleStatus(cfg, aria2Client, tunnelMgr))
 	mux.HandleFunc("GET /api/interfaces", handleListInterfaces())
+
+	// --- Modules ---
+	moduleMgr := NewModuleManager()
+	mux.HandleFunc("GET /api/modules", handleModuleList(moduleMgr))
+	mux.HandleFunc("POST /api/modules/install", handleModuleInstall(moduleMgr))
+	mux.HandleFunc("DELETE /api/modules/{name}", handleModuleRemove(moduleMgr))
 
 	// --- WebUI ---
 	mux.Handle("GET /", http.FileServer(webFS))
@@ -505,7 +513,23 @@ func handleListDownloads(client *aria2.Client) http.HandlerFunc {
 	}
 }
 
-func handleAddDownload(client *aria2.Client) http.HandlerFunc {
+// isVideoURL detects URLs that yt-dlp can handle
+func isVideoURL(rawURL string) bool {
+	videoHosts := []string{
+		"youtube.com", "youtu.be", "twitch.tv", "vimeo.com",
+		"dailymotion.com", "tiktok.com", "instagram.com",
+		"twitter.com", "x.com", "reddit.com", "soundcloud.com",
+	}
+	lower := strings.ToLower(rawURL)
+	for _, h := range videoHosts {
+		if strings.Contains(lower, h) {
+			return true
+		}
+	}
+	return false
+}
+
+func handleAddDownload(cfg *Config, client *aria2.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		contentType := r.Header.Get("Content-Type")
 		if strings.HasPrefix(contentType, "multipart/form-data") {
@@ -543,6 +567,25 @@ func handleAddDownload(client *aria2.Client) http.HandlerFunc {
 		}
 		if req.URL == "" {
 			writeError(w, http.StatusBadRequest, "url is required")
+			return
+		}
+
+		// If yt-dlp is installed and URL is a video site, use yt-dlp instead of aria2
+		mm := NewModuleManager()
+		if isVideoURL(req.URL) && mm.IsInstalled("yt-dlp") {
+			cfg.mu.RLock()
+			dlDir := cfg.DownloadDir
+			cfg.mu.RUnlock()
+			ytdlp := mm.BinPath("yt-dlp")
+			go func() {
+				cmd := exec.Command(ytdlp, "-o", filepath.Join(dlDir, "%(title)s.%(ext)s"), req.URL)
+				cmd.Stdout = os.Stdout
+				cmd.Stderr = os.Stderr
+				if err := cmd.Run(); err != nil {
+					slog.Warn("yt-dlp failed", "url", req.URL, "error", err)
+				}
+			}()
+			writeJSON(w, http.StatusOK, map[string]string{"status": "yt-dlp", "url": req.URL})
 			return
 		}
 

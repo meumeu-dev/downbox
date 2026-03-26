@@ -19,6 +19,10 @@ function downbox() {
         settingsSaving: false,
         settingsSaved: false,
 
+        // Modules
+        modules: [],
+        moduleInstalling: '',
+
         // App
         tab: 'downloads',
         downloads: [],
@@ -382,6 +386,42 @@ function downbox() {
             const now = new Date();
             if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        },
+
+        // --- Modules ---
+
+        async fetchModules() {
+            try {
+                const r = await fetch('/api/modules');
+                this.modules = await r.json() || [];
+            } catch { this.modules = []; }
+        },
+
+        async installModule(name) {
+            this.moduleInstalling = name;
+            try {
+                const r = await fetch('/api/modules/install', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name })
+                });
+                const d = await r.json();
+                if (d.error) this.toast(d.error);
+                else this.toast(name + ' installed');
+            } catch (e) { this.toast('Install failed: ' + e.message); }
+            this.moduleInstalling = '';
+            this.fetchModules();
+        },
+
+        async removeModule(name) {
+            if (!confirm('Remove ' + name + '?')) return;
+            await fetch('/api/modules/' + name, { method: 'DELETE' });
+            this.toast(name + ' removed');
+            this.fetchModules();
+        },
+
+        moduleIcon(name) {
+            return { 'yt-dlp': '\u{1F3AC}', 'rclone': '\u{2601}', 'wireguard': '\u{1F510}', 'openvpn': '\u{1F510}' }[name] || '\u{1F4E6}';
         },
 
         toggleList(current, url, add) {
