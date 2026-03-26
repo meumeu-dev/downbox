@@ -5,6 +5,7 @@ Lightweight self-hosted download station with web UI. Upload, download and share
 ![Go](https://img.shields.io/badge/Go-stdlib%20only-00ADD8)
 ![Size](https://img.shields.io/badge/binary-~7MB-green)
 ![Arch](https://img.shields.io/badge/arch-amd64%20|%20i386%20|%20arm64%20|%20armv7-blue)
+![Docker](https://img.shields.io/badge/docker-~44MB-blue)
 
 ## Install
 
@@ -15,10 +16,8 @@ curl -sL meumeu.dev/downbox/install | bash
 Custom port:
 
 ```bash
-curl -sL meumeu.dev/downbox/install | PORT=9090 bash
+curl -sL meumeu.dev/downbox/install | PORT=9090 ARIA2_PORT=6801 bash
 ```
-
-Then open `http://localhost:8080` (or your custom port) to configure.
 
 ### Docker
 
@@ -34,12 +33,29 @@ docker compose up -d
 
 ## Features
 
-- **aria2 engine** — HTTP, FTP, BitTorrent, magnet links. 16 connections per download.
-- **File upload** — Upload files directly from the web UI with progress tracking.
-- **File browser** — Browse, preview, download, delete. Share files with a direct link.
-- **Remote access** — Cloudflare Tunnel or Bore (custom server + secret supported). Access from anywhere.
-- **Setup wizard** — First-run web wizard to configure everything.
-- **Tiny footprint** — ~7MB binary, ~25MB RAM. No Docker, no database.
+- **aria2 engine** — HTTP, FTP, BitTorrent, magnet links. 16 connections per download
+- **File upload** — Upload files directly from the web UI with progress tracking
+- **File browser** — Browse, preview, download, delete, rename
+- **Share links** — Share any file with a direct link (local or public via tunnel)
+- **Remote access** — Cloudflare Tunnel or Bore. Access from anywhere
+- **DNS-over-HTTPS** — Encrypted DNS via Cloudflare, Google, Quad9, Mullvad, NextDNS or custom
+- **IP blocklist** — Built-in SOCKS5 filtering proxy with pre-configured blocklists
+- **VPN interface binding** — Route downloads through a specific network interface (tun0, wg0)
+- **Docker support** — Multi-stage Alpine image, ~44MB, non-root
+- **Password auth** — Mandatory authentication, salted password hash, session tokens
+- **Tiny footprint** — ~7MB binary, ~25MB RAM. No Docker, no database, 0 Go dependencies
+
+## Security
+
+- Mandatory password authentication (auto-generated on first run)
+- Salted SHA256 password hash (plaintext never stored)
+- Session tokens (256-bit, HTTPOnly cookies)
+- SSRF protection (DNS pinning, redirect validation, private IP blocking)
+- Path traversal protection (EvalSymlinks, O_NOFOLLOW, prefix check)
+- XSS protection (CSP, Content-Type enforcement, Alpine.js x-text)
+- Rate limiting on login
+- Config file permissions 0600
+- Security headers (X-Frame-Options, X-Content-Type-Options, CSP, Referrer-Policy)
 
 ## Usage
 
@@ -55,73 +71,66 @@ downbox help                # Show help
 
 ## Config
 
-> **Never commit `downbox.conf` to git** — it may contain tunnel tokens and secrets. The file is gitignored by default.
+> **Never commit `downbox.conf` to git** — it contains password hash and tunnel tokens. Gitignored by default.
 
 Config file is searched in order:
 1. `./downbox.conf`
 2. `~/.config/downbox/downbox.conf`
 3. `/etc/downbox/downbox.conf`
 
-```
+```ini
+# Server
 port: 8080
 download-dir: ~/Downloads
+
+# Tunnel (choose one)
 tunnel: bore
 bore-server: bore.pub
 bore-secret: your-secret
-```
 
-Or with Cloudflare Tunnel:
+# Or Cloudflare Tunnel
+# tunnel: cloudflared
+# cloudflared-token: eyJ...
+# cloudflared-hostname: dl.example.com
 
-```
-tunnel: cloudflared
-cloudflared-token: eyJ...
-cloudflared-hostname: dl.example.com
-```
-
-Download options:
-
-```
-dns-servers: 1.1.1.1,8.8.8.8
+# Privacy & security
+doh-url: https://cloudflare-dns.com/dns-query
+blocklist-url: https://raw.githubusercontent.com/sahsu/ipfilter/master/ipfilter.dat
 interface: tun0
 exclude-trackers: *
+proxy: socks5://127.0.0.1:9050
 ```
 
-- **dns-servers** — Custom DNS for downloads (comma-separated)
-- **interface** — Bind downloads to a network interface (VPN: `tun0`, `wg0`)
-- **exclude-trackers** — Block BitTorrent trackers (`*` = all, or specific URIs)
+All settings are also configurable via the web UI.
 
-CLI flags override config file values.
+## Architecture
+
+```
+┌─────────────────────────────────────┐
+│          Go binary (DownBox)         │
+│  ┌────────┐ ┌──────────┐ ┌───────┐ │
+│  │embed FS│ │ HTTP Srv  │ │ SOCKS5│ │
+│  │(WebUI) │ │ net/http  │ │ Proxy │ │
+│  └────────┘ └────┬─────┘ └───┬───┘ │
+│    ┌─────────────┼────────┐   │     │
+│  aria2 RPC    File API  Tunnel│ DoH │
+│  client       (os ops)  Mgr  │     │
+└────┼─────────────┼────────┼───┼─────┘
+  aria2c       filesystem  CF/Bore
+```
+
+- **0 external Go dependencies** — stdlib only
+- **Frontend** — Alpine.js, embedded in binary
+- **Tunnel** — Cloudflare Tunnel (token) or Bore (free/self-hosted)
+- **Proxy** — Built-in SOCKS5 with DoH + IP blocklist filtering
 
 ## Build from source
 
 ```bash
 git clone https://github.com/meumeu-dev/downbox.git
 cd downbox
-make build          # local binary
-make build-all      # linux/amd64 + i386 + arm64 + armv7
+go build -ldflags="-s -w" .
 ```
-
-Requires Go 1.22+.
-
-## Architecture
-
-```
-┌──────────────────────────────┐
-│       Go binary (DownBox)    │
-│  ┌────────┐ ┌──────────┐    │
-│  │embed FS│ │ HTTP Srv  │    │
-│  │(WebUI) │ │ net/http  │    │
-│  └────────┘ └────┬─────┘    │
-│    ┌─────────────┼────────┐  │
-│  aria2 RPC    File API  Tunnel│
-│  client       (os ops)  Mgr  │
-└────┼─────────────┼────────┼──┘
-  aria2c       filesystem  cloudflared/bore
-```
-
-- **0 external Go dependencies** — stdlib only
-- **Frontend** — Alpine.js, embedded in binary
-- **Tunnel** — Cloudflare Tunnel (token) or Bore (free/self-hosted)
 
 ## License
 
