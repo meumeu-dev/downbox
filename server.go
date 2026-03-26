@@ -1092,6 +1092,20 @@ func handleStatus(cfg *Config, client *aria2.Client, tunnelMgr *TunnelManager) h
 			"error":  tErr,
 		}
 
+		cfg.mu.RLock()
+		dohActive := cfg.DoHURL != ""
+		dohProvider := cfg.DoHURL
+		blActive := cfg.BlocklistURL != ""
+		proxyActive := cfg.Proxy != ""
+		cfg.mu.RUnlock()
+
+		status["privacy"] = map[string]interface{}{
+			"doh":       dohActive,
+			"dohUrl":    dohProvider,
+			"blocklist": blActive,
+			"proxy":     proxyActive,
+		}
+
 		writeJSON(w, http.StatusOK, status)
 	}
 }
