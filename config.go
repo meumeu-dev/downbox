@@ -94,6 +94,9 @@ func loadConfig(cfg *Config, flagsSet map[string]bool) string {
 		if v, ok := values["password"]; ok {
 			cfg.Password = v // old format, will be migrated at startup
 		}
+		if v, ok := values["session-secret"]; ok {
+			cfg.SessionSecret = v
+		}
 		if v, ok := values["dns-servers"]; ok {
 			cfg.DNSServers = v
 		}
@@ -174,6 +177,9 @@ func saveConfig(cfg *Config) error {
 	}
 	if cfg.PasswordHash != "" {
 		b.WriteString(fmt.Sprintf("password-hash: %s\n", s(cfg.PasswordHash)))
+	}
+	if cfg.SessionSecret != "" {
+		b.WriteString(fmt.Sprintf("session-secret: %s\n", s(cfg.SessionSecret)))
 	}
 	if cfg.DNSServers != "" {
 		b.WriteString(fmt.Sprintf("dns-servers: %s\n", s(cfg.DNSServers)))

@@ -68,6 +68,7 @@ type Config struct {
 	BoreSecret          string
 	Password            string // plaintext, never saved to disk (runtime only)
 	PasswordHash        string // "salt:hash" format, saved to config
+	SessionSecret       string // HMAC key for signing session cookies
 	DNSServers          string // comma-separated: "1.1.1.1,8.8.8.8"
 	Interface           string // network interface for downloads: "tun0", "eth0"
 	ExcludeTrackers     string // comma-separated tracker URIs to block, or "*"
@@ -557,6 +558,14 @@ func runServer(args []string) {
 		cfg.PasswordHash = hashPassword(cfg.Password)
 		firstGeneration = true
 		slog.Info("no password configured, one has been generated")
+	}
+
+	// Auto-generate session secret if not set
+	if cfg.SessionSecret == "" {
+		b := make([]byte, 32)
+		rand.Read(b)
+		cfg.SessionSecret = hex.EncodeToString(b)
+		firstGeneration = true
 	}
 
 	// Auto-complete setup on first start so the wizard is never exposed without auth

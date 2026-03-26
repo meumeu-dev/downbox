@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -85,21 +86,10 @@ func securityHeaders(next http.Handler) http.Handler {
 }
 
 func authMiddleware(cfg *Config, next http.Handler) http.Handler {
-	// Session tokens: map[tokenHash] -> expiry
-	var sessions sync.Map
-
-	// Expose session-clearing function (invalidates all sessions)
-	clearSessionsFunc = func() {
-		sessions.Range(func(key, _ interface{}) bool {
-			sessions.Delete(key)
-			return true
-		})
-	}
-
 	// Rate limiter for login: map[ip] -> lastAttempt
 	var loginAttempts sync.Map
 
-	// Periodic cleanup of stale rate-limit and session entries
+	// Periodic cleanup of stale rate-limit entries
 	go func() {
 		for {
 			time.Sleep(5 * time.Minute)
@@ -110,14 +100,17 @@ func authMiddleware(cfg *Config, next http.Handler) http.Handler {
 				}
 				return true
 			})
-			sessions.Range(func(key, val interface{}) bool {
-				if now.After(val.(time.Time)) {
-					sessions.Delete(key)
-				}
-				return true
-			})
 		}
 	}()
+
+	// Expose session-clearing function — regenerates session secret
+	clearSessionsFunc = func() {
+		cfg.mu.Lock()
+		b := make([]byte, 32)
+		rand.Read(b)
+		cfg.SessionSecret = hex.EncodeToString(b)
+		cfg.mu.Unlock()
+	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Share links are public — no auth needed
@@ -126,18 +119,11 @@ func authMiddleware(cfg *Config, next http.Handler) http.Handler {
 			return
 		}
 
-		// Setup wizard endpoints now require auth like everything else
-		// (setup is auto-completed on first start, so there's no unauthenticated window)
-
-		// Check session cookie
+		// Check session cookie (HMAC-signed, survives restarts)
 		if c, err := r.Cookie("downbox_session"); err == nil {
-			tokenHash := sha256.Sum256([]byte(c.Value))
-			if exp, ok := sessions.Load(tokenHash); ok {
-				if time.Now().Before(exp.(time.Time)) {
-					next.ServeHTTP(w, r)
-					return
-				}
-				sessions.Delete(tokenHash)
+			if verifySessionCookie(c.Value, cfg) {
+				next.ServeHTTP(w, r)
+				return
 			}
 		}
 
@@ -167,17 +153,11 @@ func authMiddleware(cfg *Config, next http.Handler) http.Handler {
 			pwHash := cfg.PasswordHash
 			cfg.mu.RUnlock()
 			if verifyPassword(req.Password, pwHash) {
-				// Generate random session token
-				tokenBytes := make([]byte, 32)
-				rand.Read(tokenBytes)
-				token := hex.EncodeToString(tokenBytes)
-				tokenHash := sha256.Sum256([]byte(token))
-				sessions.Store(tokenHash, time.Now().Add(30*24*time.Hour))
-
+				cookie := createSessionCookie(cfg)
 				isHTTPS := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 				http.SetCookie(w, &http.Cookie{
 					Name:     "downbox_session",
-					Value:    token,
+					Value:    cookie,
 					Path:     "/",
 					MaxAge:   86400 * 30,
 					HttpOnly: true,
@@ -204,6 +184,44 @@ func authMiddleware(cfg *Config, next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		}
 	})
+}
+
+// createSessionCookie creates a signed cookie value: "expiry_hex:hmac_hex"
+func createSessionCookie(cfg *Config) string {
+	cfg.mu.RLock()
+	secret := cfg.SessionSecret
+	cfg.mu.RUnlock()
+	expiry := time.Now().Add(30 * 24 * time.Hour).Unix()
+	expiryHex := fmt.Sprintf("%x", expiry)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(expiryHex))
+	sig := hex.EncodeToString(mac.Sum(nil))
+	return expiryHex + ":" + sig
+}
+
+// verifySessionCookie checks a signed cookie value
+func verifySessionCookie(cookie string, cfg *Config) bool {
+	parts := strings.SplitN(cookie, ":", 2)
+	if len(parts) != 2 {
+		return false
+	}
+	expiryHex, sig := parts[0], parts[1]
+
+	// Check expiry
+	var expiry int64
+	fmt.Sscanf(expiryHex, "%x", &expiry)
+	if time.Now().Unix() > expiry {
+		return false
+	}
+
+	// Verify HMAC
+	cfg.mu.RLock()
+	secret := cfg.SessionSecret
+	cfg.mu.RUnlock()
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(expiryHex))
+	expected := hex.EncodeToString(mac.Sum(nil))
+	return hmac.Equal([]byte(sig), []byte(expected))
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {
@@ -688,7 +706,9 @@ func handleSetupSave(cfg *Config, tunnelMgr *TunnelManager) http.HandlerFunc {
 			Aria2Secret: cfg.Aria2Secret, Aria2Port: cfg.Aria2Port, PublicURL: cfg.PublicURL,
 			Tunnel: cfg.Tunnel, CloudflaredToken: cfg.CloudflaredToken,
 			CloudflaredHostname: cfg.CloudflaredHostname, BoreServer: cfg.BoreServer,
-			BoreSecret: cfg.BoreSecret, Password: cfg.Password, DNSServers: cfg.DNSServers,
+			BoreSecret: cfg.BoreSecret, Password: cfg.Password,
+			PasswordHash: cfg.PasswordHash, SessionSecret: cfg.SessionSecret,
+			DNSServers: cfg.DNSServers,
 			Interface: cfg.Interface, ExcludeTrackers: cfg.ExcludeTrackers,
 			Proxy: cfg.Proxy, DoHURL: cfg.DoHURL, BlocklistURL: cfg.BlocklistURL,
 			BlocklistPort: cfg.BlocklistPort, SetupDone: cfg.SetupDone,
