@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DownBox — Self-hosted download station</title>
+    <meta name="description" content="Lightweight self-hosted download station. Upload, download and share files via tunnel. aria2 + file browser. Single binary, runs on Raspberry Pi.">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #0a0a12;
+            color: #e4e5ea;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+        a { color: #6c5ce7; text-decoration: none; }
+        a:hover { color: #7c6df7; }
+
+        .bg-grid {
+            position: fixed; inset: 0; z-index: 0;
+            background-image:
+                linear-gradient(rgba(108,108,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(108,108,255,0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+        }
+
+        .wrap { position: relative; z-index: 2; max-width: 720px; margin: 0 auto; padding: 0 1.5rem; }
+
+        /* Nav */
+        nav {
+            display: flex; align-items: center; gap: 0.5rem;
+            padding: 1.5rem 0; font-size: 0.85rem; color: #555;
+        }
+        nav a { color: #6b7084; }
+        nav a:hover { color: #e4e5ea; }
+
+        /* Hero */
+        .hero { padding: 3rem 0 2.5rem; }
+        .hero-icon {
+            width: 56px; height: 56px;
+            background: rgba(108, 92, 231, 0.12);
+            border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 1.2rem;
+        }
+        .hero-icon svg { color: #6c5ce7; }
+        h1 {
+            font-size: 2.2rem; font-weight: 800; letter-spacing: -1px;
+            margin-bottom: 0.6rem;
+        }
+        .hero p {
+            font-size: 1.1rem; color: #8b8fa3; line-height: 1.6;
+            max-width: 540px;
+        }
+
+        /* Install */
+        .install-section { padding: 1.5rem 0; }
+        .install-section h2 {
+            font-size: 0.75rem; text-transform: uppercase;
+            letter-spacing: 3px; color: #555; margin-bottom: 1rem;
+        }
+        .install-box {
+            background: #141722;
+            border: 1px solid #2a2e3d;
+            border-radius: 10px;
+            padding: 1rem 1.2rem;
+            display: flex; align-items: center; gap: 0.7rem;
+        }
+        .install-box .prompt { color: #6c5ce7; font-weight: 700; font-family: monospace; }
+        .install-box code {
+            flex: 1;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.85rem;
+            color: #4aff6a;
+            word-break: break-all;
+        }
+        .copy-btn {
+            background: #1e2233; border: 1px solid #2a2e3d; border-radius: 6px;
+            padding: 0.4rem 0.7rem; cursor: pointer; color: #6b7084;
+            font-size: 0.8rem; transition: all 0.15s; display: flex; align-items: center; gap: 0.3rem;
+        }
+        .copy-btn:hover { border-color: #6c5ce7; color: #e4e5ea; }
+        .install-note {
+            margin-top: 0.6rem; font-size: 0.8rem; color: #555;
+        }
+        .install-note code {
+            background: #1a1d27; padding: 0.15em 0.4em; border-radius: 3px;
+            font-size: 0.8rem; color: #8b8fa3;
+        }
+
+        /* Features */
+        .features { padding: 2rem 0; }
+        .features h2 {
+            font-size: 0.75rem; text-transform: uppercase;
+            letter-spacing: 3px; color: #555; margin-bottom: 1.2rem;
+        }
+        .feat-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem;
+        }
+        .feat {
+            background: rgba(26, 29, 39, 0.6);
+            border: 1px solid #2a2e3d;
+            border-radius: 10px;
+            padding: 1rem 1.2rem;
+        }
+        .feat-icon { font-size: 1.3rem; margin-bottom: 0.4rem; }
+        .feat strong { font-size: 0.9rem; display: block; margin-bottom: 0.2rem; }
+        .feat p { font-size: 0.8rem; color: #6b7084; line-height: 1.4; }
+
+        /* How it works */
+        .how { padding: 2rem 0; }
+        .how h2 {
+            font-size: 0.75rem; text-transform: uppercase;
+            letter-spacing: 3px; color: #555; margin-bottom: 1.2rem;
+        }
+        .steps { display: flex; flex-direction: column; gap: 0.8rem; }
+        .step {
+            display: flex; align-items: flex-start; gap: 1rem;
+        }
+        .step-num {
+            width: 28px; height: 28px; flex-shrink: 0;
+            background: rgba(108, 92, 231, 0.12);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.8rem; font-weight: 700; color: #6c5ce7;
+        }
+        .step-text strong { font-size: 0.9rem; display: block; margin-bottom: 0.15rem; }
+        .step-text p { font-size: 0.8rem; color: #6b7084; }
+
+        /* Specs */
+        .specs {
+            display: flex; gap: 1.5rem; padding: 1.5rem 0;
+            flex-wrap: wrap;
+        }
+        .spec {
+            font-size: 0.8rem; color: #6b7084;
+            display: flex; align-items: center; gap: 0.3rem;
+        }
+        .spec strong { color: #e4e5ea; }
+
+        /* Links */
+        .links {
+            display: flex; gap: 1rem; padding: 2rem 0;
+        }
+        .link-btn {
+            display: inline-flex; align-items: center; gap: 0.4rem;
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px; font-size: 0.9rem; font-weight: 500;
+            transition: all 0.15s;
+        }
+        .link-primary {
+            background: #6c5ce7; color: #fff;
+        }
+        .link-primary:hover { background: #7c6df7; color: #fff; }
+        .link-ghost {
+            background: #1a1d27; border: 1px solid #2a2e3d; color: #e4e5ea;
+        }
+        .link-ghost:hover { border-color: #6c5ce7; }
+
+        footer {
+            text-align: center; padding: 3rem 0 2rem;
+            font-size: 0.75rem; color: #333;
+        }
+        footer a { color: #444; }
+
+        @media (max-width: 600px) {
+            .feat-grid { grid-template-columns: 1fr; }
+            h1 { font-size: 1.6rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-grid"></div>
+
+    <div class="wrap">
+        <nav>
+            <a href="https://meumeu.dev">meumeu.dev</a>
+            <span>/</span>
+            <span>downbox</span>
+        </nav>
+
+        <div class="hero">
+            <div class="hero-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+            </div>
+            <h1>DownBox</h1>
+            <p>Lightweight self-hosted download station with web UI. Upload, download and share files via tunnel. Single binary, runs on a Raspberry Pi.</p>
+        </div>
+
+        <div class="install-section">
+            <h2>Install</h2>
+            <div class="install-box">
+                <span class="prompt">$</span>
+                <code id="cmd">curl -sL meumeu.dev/downbox/install | bash</code>
+                <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('cmd').textContent);this.innerHTML='Copied!'">
+                    Copy
+                </button>
+            </div>
+            <p class="install-note">
+                Requires Linux (amd64, i386, arm64, armv7). Installs <code>aria2</code> automatically.
+                Then open <code>http://localhost:8080</code> to configure.
+            </p>
+            <p class="install-note">
+                Custom port: <code>curl -sL meumeu.dev/downbox/install | PORT=9090 bash</code>
+            </p>
+            <div class="install-box" style="margin-top:0.8rem">
+                <span class="prompt">$</span>
+                <code id="cmd2">docker run -d -p 8080:8080 -v ~/Downloads:/downloads meumeudev/downbox</code>
+                <button class="copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('cmd2').textContent);this.innerHTML='Copied!'">
+                    Copy
+                </button>
+            </div>
+        </div>
+
+        <div class="features">
+            <h2>Features</h2>
+            <div class="feat-grid">
+                <div class="feat">
+                    <div class="feat-icon">&#9889;</div>
+                    <strong>aria2 engine</strong>
+                    <p>HTTP, FTP, BitTorrent, magnet links. 16 connections per download.</p>
+                </div>
+                <div class="feat">
+                    <div class="feat-icon">&#128193;</div>
+                    <strong>File browser + Upload</strong>
+                    <p>Browse, preview, upload, download, delete. Share any file with a link.</p>
+                </div>
+                <div class="feat">
+                    <div class="feat-icon">&#127760;</div>
+                    <strong>Remote access</strong>
+                    <p>Cloudflare Tunnel or Bore. Access your downloads from anywhere.</p>
+                </div>
+                <div class="feat">
+                    <div class="feat-icon">&#128274;</div>
+                    <strong>Privacy &amp; Security</strong>
+                    <p>DNS-over-HTTPS, IP blocklists, VPN interface binding, password auth.</p>
+                </div>
+                <div class="feat">
+                    <div class="feat-icon">&#128051;</div>
+                    <strong>Docker</strong>
+                    <p>One-line deploy. ~44MB image, non-root, healthcheck included.</p>
+                </div>
+                <div class="feat">
+                    <div class="feat-icon">&#129529;</div>
+                    <strong>Tiny footprint</strong>
+                    <p>~7MB binary, ~25MB RAM. No database, 0 Go dependencies.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="how">
+            <h2>How it works</h2>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-num">1</div>
+                    <div class="step-text">
+                        <strong>Install</strong>
+                        <p>One command installs DownBox + aria2. Works on any Linux machine.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <div class="step-text">
+                        <strong>Setup</strong>
+                        <p>Open the web UI, choose your tunnel (Cloudflare, Bore, or none), done.</p>
+                    </div>
+                </div>
+                <div class="step">
+                    <div class="step-num">3</div>
+                    <div class="step-text">
+                        <strong>Use</strong>
+                        <p>Paste URLs, upload files, share downloads. From your phone, anywhere.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="specs">
+            <div class="spec"><strong>~7MB</strong>&nbsp;binary</div>
+            <div class="spec"><strong>0</strong>&nbsp;dependencies</div>
+            <div class="spec"><strong>ARM</strong>&nbsp;+ x86</div>
+            <div class="spec"><strong>Go</strong>&nbsp;+ Alpine.js</div>
+        </div>
+
+        <div class="links">
+            <a href="https://github.com/meumeu-dev/downbox" class="link-btn link-primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                </svg>
+                GitHub
+            </a>
+            <a href="https://github.com/meumeu-dev/downbox/releases" class="link-btn link-ghost">
+                Releases
+            </a>
+        </div>
+
+        <footer>
+            <a href="https://meumeu.dev">meumeu.dev</a>
+        </footer>
+    </div>
+</body>
+</html>
