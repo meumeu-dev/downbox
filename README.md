@@ -3,9 +3,10 @@
 Lightweight self-hosted download station with web UI. Upload, download and share files via tunnel. Single binary, runs on a Raspberry Pi.
 
 ![Go](https://img.shields.io/badge/Go-stdlib%20only-00ADD8)
-![Size](https://img.shields.io/badge/binary-~7MB-green)
+![Size](https://img.shields.io/github/release-size/meumeu-dev/downbox?label=binary&color=green)
+![Release](https://img.shields.io/github/v/release/meumeu-dev/downbox?color=blue)
 ![Arch](https://img.shields.io/badge/arch-amd64%20|%20i386%20|%20arm64%20|%20armv7-blue)
-![Docker](https://img.shields.io/badge/docker-~44MB-blue)
+![Docker](https://img.shields.io/docker/image-size/meumeudev/downbox?label=docker&color=blue)
 
 ## Install
 
