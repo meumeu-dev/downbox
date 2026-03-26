@@ -649,11 +649,9 @@ func runServer(args []string) {
 	}
 	defer blocklistMgr.Stop()
 
-	// If blocklist proxy is running, route aria2 through it
-	if proxyAddr := blocklistMgr.ProxyAddr(); proxyAddr != "" {
-		cfg.Proxy = "socks5://127.0.0.1:" + strings.Split(proxyAddr, ":")[1]
-		slog.Info("aria2 routed through blocklist proxy", "proxy", cfg.Proxy)
-	}
+	// Note: the built-in SOCKS5 proxy handles DoH + blocklist for Go code
+	// (resolveAndValidateURL, blocklist.go). aria2 uses its own DNS settings
+	// (--async-dns-server) and doesn't support SOCKS5 proxy natively.
 
 	// --- Start aria2 as subprocess ---
 	aria2Cmd, err := startAria2(&cfg)

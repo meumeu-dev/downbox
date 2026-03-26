@@ -69,6 +69,11 @@ func (bm *BlocklistManager) Start() error {
 	if len(bm.networks) > 0 {
 		slog.Info("blocklist total entries", "count", len(bm.networks))
 	}
+
+	// Only start proxy if there's something to do (blocklist entries or DoH)
+	if len(bm.networks) == 0 && bm.cfg.DoHURL == "" {
+		return nil
+	}
 	return bm.startProxy()
 }
 
