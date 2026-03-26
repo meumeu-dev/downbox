@@ -43,6 +43,7 @@ function downbox() {
 
         // Logs
         logs: [],
+        logFilter: 'all',
 
         // Version
         currentVersion: '',
@@ -125,6 +126,18 @@ function downbox() {
                 const d = await r.json();
                 this.logs = d.lines || [];
             } catch { this.logs = []; }
+        },
+
+        get filteredLogs() {
+            if (this.logFilter === 'all') return this.logs;
+            return this.logs.filter(l => {
+                const lower = l.toLowerCase();
+                if (this.logFilter === 'errors') return lower.includes('error') || lower.includes('warn') || lower.includes('fail');
+                if (this.logFilter === 'auth') return lower.includes('login') || lower.includes('401') || lower.includes('auth');
+                if (this.logFilter === 'aria2') return lower.includes('aria2');
+                if (this.logFilter === 'http') return lower.includes('http') && !lower.includes('401');
+                return true;
+            });
         },
 
         async restartServer() {

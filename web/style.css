@@ -183,6 +183,7 @@ a:hover { color: var(--primary-hover); }
 .log-box { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; max-height: 70vh; overflow-y: auto; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.75rem; }
 .log-line { color: var(--text-muted); padding: 0.1rem 0; white-space: pre-wrap; word-break: break-all; }
 .log-line:hover { color: var(--text); }
+.log-error { color: var(--red) !important; }
 
 /* ===== CARDS ===== */
 

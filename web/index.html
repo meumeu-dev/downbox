@@ -524,13 +524,20 @@
         <section x-show="tab === 'logs'" x-cloak>
             <div class="page-header">
                 <h1>Logs</h1>
-                <button class="btn btn-ghost" @click="fetchLogs()">Refresh</button>
+                <div style="display:flex;gap:0.3rem;align-items:center">
+                    <button class="btn btn-xs" :class="logFilter==='all' ? 'btn-primary' : 'btn-ghost'" @click="logFilter='all'">All</button>
+                    <button class="btn btn-xs" :class="logFilter==='errors' ? 'btn-primary' : 'btn-ghost'" @click="logFilter='errors'">Errors</button>
+                    <button class="btn btn-xs" :class="logFilter==='auth' ? 'btn-primary' : 'btn-ghost'" @click="logFilter='auth'">Auth</button>
+                    <button class="btn btn-xs" :class="logFilter==='aria2' ? 'btn-primary' : 'btn-ghost'" @click="logFilter='aria2'">aria2</button>
+                    <button class="btn btn-xs" :class="logFilter==='http' ? 'btn-primary' : 'btn-ghost'" @click="logFilter='http'">HTTP</button>
+                    <button class="btn btn-ghost btn-xs" @click="fetchLogs()">Refresh</button>
+                </div>
             </div>
             <div class="log-box">
-                <template x-for="(line, i) in logs" :key="i">
-                    <div class="log-line" x-text="line"></div>
+                <template x-for="(line, i) in filteredLogs" :key="i">
+                    <div class="log-line" :class="{'log-error': line.toLowerCase().includes('error') || line.toLowerCase().includes('warn')}" x-text="line"></div>
                 </template>
-                <div x-show="logs.length === 0" class="empty-state"><p>No logs available</p></div>
+                <div x-show="filteredLogs.length === 0" class="empty-state"><p>No logs matching filter</p></div>
             </div>
         </section>
 
