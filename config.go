@@ -88,8 +88,11 @@ func loadConfig(cfg *Config, flagsSet map[string]bool) string {
 		if v, ok := values["bore-secret"]; ok {
 			cfg.BoreSecret = v
 		}
+		if v, ok := values["password-hash"]; ok {
+			cfg.PasswordHash = v
+		}
 		if v, ok := values["password"]; ok {
-			cfg.Password = v
+			cfg.Password = v // old format, will be migrated at startup
 		}
 		if v, ok := values["dns-servers"]; ok {
 			cfg.DNSServers = v
@@ -169,8 +172,8 @@ func saveConfig(cfg *Config) error {
 	if cfg.BoreSecret != "" {
 		b.WriteString(fmt.Sprintf("bore-secret: %s\n", s(cfg.BoreSecret)))
 	}
-	if cfg.Password != "" {
-		b.WriteString(fmt.Sprintf("password: %s\n", s(cfg.Password)))
+	if cfg.PasswordHash != "" {
+		b.WriteString(fmt.Sprintf("password-hash: %s\n", s(cfg.PasswordHash)))
 	}
 	if cfg.DNSServers != "" {
 		b.WriteString(fmt.Sprintf("dns-servers: %s\n", s(cfg.DNSServers)))

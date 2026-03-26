@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -86,31 +85,15 @@ func securityHeaders(next http.Handler) http.Handler {
 }
 
 func authMiddleware(cfg *Config, next http.Handler) http.Handler {
-	var passHash [32]byte
-	var passMu sync.RWMutex
-	recomputeHash := func() {
-		passMu.Lock()
-		passHash = sha256.Sum256([]byte(cfg.Password))
-		passMu.Unlock()
-	}
-	recomputeHash()
-
-	getPassHash := func() [32]byte {
-		passMu.RLock()
-		defer passMu.RUnlock()
-		return passHash
-	}
-
 	// Session tokens: map[tokenHash] -> expiry
 	var sessions sync.Map
 
-	// Expose session-clearing function + password hash refresh
+	// Expose session-clearing function (invalidates all sessions)
 	clearSessionsFunc = func() {
 		sessions.Range(func(key, _ interface{}) bool {
 			sessions.Delete(key)
 			return true
 		})
-		recomputeHash()
 	}
 
 	// Rate limiter for login: map[ip] -> lastAttempt
@@ -180,9 +163,10 @@ func authMiddleware(cfg *Config, next http.Handler) http.Handler {
 				writeError(w, http.StatusBadRequest, "invalid JSON")
 				return
 			}
-			h := sha256.Sum256([]byte(req.Password))
-			currentHash := getPassHash()
-			if subtle.ConstantTimeCompare(h[:], currentHash[:]) == 1 {
+			cfg.mu.RLock()
+			pwHash := cfg.PasswordHash
+			cfg.mu.RUnlock()
+			if verifyPassword(req.Password, pwHash) {
 				// Generate random session token
 				tokenBytes := make([]byte, 32)
 				rand.Read(tokenBytes)

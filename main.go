@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"embed"
 	"encoding/hex"
 	"encoding/json"
@@ -64,7 +66,8 @@ type Config struct {
 	CloudflaredHostname string
 	BoreServer          string
 	BoreSecret          string
-	Password            string
+	Password            string // plaintext, never saved to disk (runtime only)
+	PasswordHash        string // "salt:hash" format, saved to config
 	DNSServers          string // comma-separated: "1.1.1.1,8.8.8.8"
 	Interface           string // network interface for downloads: "tun0", "eth0"
 	ExcludeTrackers     string // comma-separated tracker URIs to block, or "*"
@@ -523,12 +526,23 @@ func runServer(args []string) {
 		cfg.Aria2Secret = hex.EncodeToString(b)
 	}
 
-	// Auto-generate password if not set
+	// Password handling:
+	// - If PasswordHash exists → use it (password stays empty, auth uses hash)
+	// - If old plaintext Password exists → migrate to hash, clear plaintext
+	// - If neither → generate new password, hash it, show once
 	firstGeneration := false
-	if cfg.Password == "" {
+	if cfg.PasswordHash == "" && cfg.Password != "" {
+		// Migrate old plaintext password to hash
+		cfg.PasswordHash = hashPassword(cfg.Password)
+		cfg.Password = "" // clear plaintext from config
+		firstGeneration = true
+		slog.Info("migrated plaintext password to hash")
+	} else if cfg.PasswordHash == "" && cfg.Password == "" {
+		// First run — generate password
 		b := make([]byte, 12)
 		rand.Read(b)
-		cfg.Password = hex.EncodeToString(b)
+		cfg.Password = hex.EncodeToString(b) // kept in memory for display only
+		cfg.PasswordHash = hashPassword(cfg.Password)
 		firstGeneration = true
 		slog.Info("no password configured, one has been generated")
 	}
@@ -797,6 +811,25 @@ func formatSize(bytes int64) string {
 
 func decodeJSON(resp *http.Response, v interface{}) error {
 	return json.NewDecoder(resp.Body).Decode(v)
+}
+
+// hashPassword creates a "salt:hash" string from a plaintext password.
+func hashPassword(password string) string {
+	salt := make([]byte, 16)
+	rand.Read(salt)
+	saltHex := hex.EncodeToString(salt)
+	h := sha256.Sum256([]byte(saltHex + ":" + password))
+	return saltHex + ":" + hex.EncodeToString(h[:])
+}
+
+// verifyPassword checks a plaintext password against a "salt:hash" string.
+func verifyPassword(password, storedHash string) bool {
+	parts := strings.SplitN(storedHash, ":", 2)
+	if len(parts) != 2 {
+		return false
+	}
+	h := sha256.Sum256([]byte(parts[0] + ":" + password))
+	return subtle.ConstantTimeCompare([]byte(hex.EncodeToString(h[:])), []byte(parts[1])) == 1
 }
 
 // isTerminal checks if f is connected to a terminal (not redirected/piped).
