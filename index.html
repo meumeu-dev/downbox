@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DownBox — Self-hosted download station</title>
-    <meta name="description" content="Lightweight self-hosted download station. Upload, download and share files via tunnel. aria2 + file browser. Single binary, runs on Raspberry Pi.">
+    <meta name="description" content="Lightweight self-hosted download station. Upload, download and share files via tunnel. DNS-over-HTTPS, IP blocklist, Docker. Single binary.">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -188,7 +188,7 @@
                 </svg>
             </div>
             <h1>DownBox</h1>
-            <p>Lightweight self-hosted download station with web UI. Upload, download and share files via tunnel. Single binary, runs on a Raspberry Pi.</p>
+            <p>Lightweight self-hosted download station with web UI. Upload, download and share files via encrypted tunnel. Privacy-first, single binary.</p>
         </div>
 
         <div class="install-section">
@@ -202,10 +202,6 @@
             </div>
             <p class="install-note">
                 Requires Linux (amd64, i386, arm64, armv7). Installs <code>aria2</code> automatically.
-                Then open <code>http://localhost:8080</code> to configure.
-            </p>
-            <p class="install-note">
-                Custom port: <code>curl -sL meumeu.dev/downbox/install | PORT=9090 bash</code>
             </p>
             <div class="install-box" style="margin-top:0.8rem">
                 <span class="prompt">$</span>
@@ -237,7 +233,7 @@
                 <div class="feat">
                     <div class="feat-icon">&#128274;</div>
                     <strong>Privacy &amp; Security</strong>
-                    <p>DNS-over-HTTPS, IP blocklists, VPN interface binding, password auth.</p>
+                    <p>DNS-over-HTTPS, IP blocklists, VPN binding. Salted password hash, session tokens, SSRF protection.</p>
                 </div>
                 <div class="feat">
                     <div class="feat-icon">&#128051;</div>
@@ -246,8 +242,8 @@
                 </div>
                 <div class="feat">
                     <div class="feat-icon">&#129529;</div>
-                    <strong>Tiny footprint</strong>
-                    <p>~7MB binary, ~25MB RAM. No database, 0 Go dependencies.</p>
+                    <strong>Tiny &amp; zero-dep</strong>
+                    <p>Single binary, ~25MB RAM. No database, 0 external Go dependencies.</p>
                 </div>
             </div>
         </div>
@@ -259,31 +255,31 @@
                     <div class="step-num">1</div>
                     <div class="step-text">
                         <strong>Install</strong>
-                        <p>One command installs DownBox + aria2. Works on any Linux machine.</p>
+                        <p>One command or Docker. Installs DownBox + aria2 on any Linux machine.</p>
                     </div>
                 </div>
                 <div class="step">
                     <div class="step-num">2</div>
                     <div class="step-text">
-                        <strong>Setup</strong>
-                        <p>Open the web UI, choose your tunnel (Cloudflare, Bore, or none), done.</p>
+                        <strong>Login</strong>
+                        <p>Password auto-generated at first run. Configure tunnel, DNS, blocklists from the web UI.</p>
                     </div>
                 </div>
                 <div class="step">
                     <div class="step-num">3</div>
                     <div class="step-text">
                         <strong>Use</strong>
-                        <p>Paste URLs, upload files, share downloads. From your phone, anywhere.</p>
+                        <p>Paste URLs, upload files, share downloads. Everything encrypted, from your phone, anywhere.</p>
                     </div>
                 </div>
             </div>
         </div>
 
         <div class="specs">
-            <div class="spec"><strong>~7MB</strong>&nbsp;binary</div>
             <div class="spec"><strong>0</strong>&nbsp;dependencies</div>
             <div class="spec"><strong>ARM</strong>&nbsp;+ x86</div>
             <div class="spec"><strong>Go</strong>&nbsp;+ Alpine.js</div>
+            <div class="spec"><strong>MIT</strong>&nbsp;License</div>
         </div>
 
         <div class="links">
