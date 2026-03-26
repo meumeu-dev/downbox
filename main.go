@@ -184,12 +184,20 @@ func cmdUpdate() {
 	}
 	execPath, _ = filepath.EvalSymlinks(execPath)
 
-	// Replace binary (may need sudo)
+	// Stop the service (systemd or manual) before replacing binary
 	wasRunning := false
+	usedSystemd := false
 	if _, running := readPid(); running {
 		wasRunning = true
-		fmt.Println("Stopping DownBox...")
-		cmdStop()
+		// Try systemctl stop first (prevents auto-restart)
+		if exec.Command("systemctl", "is-active", "--quiet", "downbox").Run() == nil {
+			fmt.Println("Stopping DownBox service...")
+			exec.Command("sudo", "systemctl", "stop", "downbox").Run()
+			usedSystemd = true
+		} else {
+			fmt.Println("Stopping DownBox...")
+			cmdStop()
+		}
 		time.Sleep(500 * time.Millisecond)
 	}
 
@@ -209,7 +217,11 @@ func cmdUpdate() {
 
 	if wasRunning {
 		fmt.Println("Restarting...")
-		cmdStart(nil)
+		if usedSystemd {
+			exec.Command("sudo", "systemctl", "start", "downbox").Run()
+		} else {
+			cmdStart(nil)
+		}
 	}
 }
 
