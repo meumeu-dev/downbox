@@ -15,7 +15,6 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -513,16 +512,24 @@ func handleListDownloads(client *aria2.Client) http.HandlerFunc {
 	}
 }
 
-// isVideoURL detects URLs that yt-dlp can handle
+// isVideoURL detects URLs that yt-dlp can handle (checks parsed hostname only)
 func isVideoURL(rawURL string) bool {
-	videoHosts := []string{
-		"youtube.com", "youtu.be", "twitch.tv", "vimeo.com",
-		"dailymotion.com", "tiktok.com", "instagram.com",
-		"twitter.com", "x.com", "reddit.com", "soundcloud.com",
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return false
 	}
-	lower := strings.ToLower(rawURL)
+	host := strings.ToLower(parsed.Hostname())
+	videoHosts := []string{
+		"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be",
+		"twitch.tv", "www.twitch.tv", "vimeo.com", "www.vimeo.com",
+		"dailymotion.com", "www.dailymotion.com",
+		"tiktok.com", "www.tiktok.com",
+		"instagram.com", "www.instagram.com",
+		"twitter.com", "x.com", "reddit.com", "www.reddit.com",
+		"soundcloud.com", "www.soundcloud.com",
+	}
 	for _, h := range videoHosts {
-		if strings.Contains(lower, h) {
+		if host == h {
 			return true
 		}
 	}
@@ -570,15 +577,26 @@ func handleAddDownload(cfg *Config, client *aria2.Client) http.HandlerFunc {
 			return
 		}
 
-		// If yt-dlp is installed and URL is a video site, use yt-dlp instead of aria2
+		// If yt-dlp is installed and URL is a known video site, use yt-dlp
 		mm := NewModuleManager()
 		if isVideoURL(req.URL) && mm.IsInstalled("yt-dlp") {
+			// Still validate against SSRF (blocks internal IPs even for video hosts)
+			if err := validateDownloadURL(req.URL); err != nil {
+				writeError(w, http.StatusBadRequest, err.Error())
+				return
+			}
 			cfg.mu.RLock()
 			dlDir := cfg.DownloadDir
 			cfg.mu.RUnlock()
 			ytdlp := mm.BinPath("yt-dlp")
 			go func() {
-				cmd := exec.Command(ytdlp, "-o", filepath.Join(dlDir, "%(title)s.%(ext)s"), req.URL)
+				cmd := exec.Command(ytdlp,
+					"--restrict-filenames",       // sanitize output filename
+					"--paths", dlDir,              // force output to download dir
+					"-o", "%(title)s.%(ext)s",     // filename template (relative to --paths)
+					"--no-exec",                   // don't run post-processors
+					req.URL,
+				)
 				cmd.Stdout = os.Stdout
 				cmd.Stderr = os.Stderr
 				if err := cmd.Run(); err != nil {

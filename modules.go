@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -37,6 +38,7 @@ type ModuleStatus struct {
 type ModuleManager struct {
 	modulesDir string
 	registry   []ModuleDef
+	mu         sync.Mutex
 }
 
 func NewModuleManager() *ModuleManager {
@@ -115,9 +117,10 @@ func (mm *ModuleManager) List() []ModuleStatus {
 			status.Path = path
 		}
 
-		// Get version if installed
+		// Don't auto-execute binaries for version check on every list call.
+		// Version is only checked on explicit request, not on page load.
 		if status.Installed {
-			status.Version = mm.getVersion(mod, status.Path)
+			status.Version = "installed"
 		}
 
 		result = append(result, status)
@@ -147,6 +150,8 @@ func (mm *ModuleManager) BinPath(name string) string {
 
 // Install downloads and installs a module
 func (mm *ModuleManager) Install(name string) error {
+	mm.mu.Lock()
+	defer mm.mu.Unlock()
 	mod := mm.findMod(name)
 	if mod == nil {
 		return fmt.Errorf("unknown module: %s", name)
@@ -203,6 +208,8 @@ func (mm *ModuleManager) Install(name string) error {
 
 // Remove uninstalls a module
 func (mm *ModuleManager) Remove(name string) error {
+	mm.mu.Lock()
+	defer mm.mu.Unlock()
 	mod := mm.findMod(name)
 	if mod == nil {
 		return fmt.Errorf("unknown module: %s", name)
@@ -300,7 +307,9 @@ func (mm *ModuleManager) installFromZip(r io.Reader, destDir, binaryName string)
 	}
 	defer os.RemoveAll(extractDir)
 
-	cmd := exec.Command("unzip", "-o", "-q", tmpFile.Name(), "-d", extractDir)
+	cmd := exec.Command("unzip", "-o", "-q", "-K", tmpFile.Name(), "-d", extractDir)
+	// Note: unzip does not follow symlinks when extracting by default,
+	// but we also verify the extracted file is not a symlink below
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("unzip failed: %w", err)
 	}
@@ -320,6 +329,15 @@ func (mm *ModuleManager) installFromZip(r io.Reader, destDir, binaryName string)
 
 	if found == "" {
 		return fmt.Errorf("binary %s not found in archive", binaryName)
+	}
+
+	// Reject symlinks (zip slip prevention)
+	fi, err := os.Lstat(found)
+	if err != nil {
+		return err
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("symlink in archive rejected: %s", binaryName)
 	}
 
 	destPath := filepath.Join(destDir, binaryName)
